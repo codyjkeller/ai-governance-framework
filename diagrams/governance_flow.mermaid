@@ -1,0 +1,31 @@
+graph TD
+    User[User / Employee] -->|Prompt Input| L1_Input
+    
+    subgraph "Trust Boundary (Internal)"
+        L1_Input[Layer 1: Input Guardrails] -->|Sanitized Prompt| L2_Boundary
+        
+        L2_Boundary[Layer 2: Context Boundary] -->|Token Limit Check| L3_Process
+        
+        subgraph "Layer 3: Process (RAG)"
+            L3_Process -->|Retrieval Request| VectorDB[(Vector DB)]
+            VectorDB -->|Verified Context| L3_Process
+        end
+        
+        L3_Process -->|Enriched Prompt| LLM_API
+    end
+    
+    subgraph "External Model Provider"
+        LLM_API[LLM Service] -->|Raw Completion| L4_Quality
+    end
+    
+    subgraph "Trust Boundary (Internal)"
+        L4_Quality[Layer 4: Quality & Citation] -->|Confidence Score > 85%| L5_Safety
+        L4_Quality -->|Confidence Score < 85%| Reject[Reject Response]
+        
+        L5_Safety[Layer 5: Output Safety Scan] -->|Safe| User
+        L5_Safety -->|Unsafe/Toxic| Block[Block & Audit Log]
+    end
+    
+    style L1_Input fill:#e1f5fe,stroke:#01579b
+    style L3_Process fill:#e8f5e9,stroke:#2e7d32
+    style L5_Safety fill:#ffebee,stroke:#c62828
