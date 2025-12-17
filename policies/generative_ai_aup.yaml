@@ -1,0 +1,37 @@
+# Enterprise Generative AI Acceptable Use Policy (AUP)
+# Version: 1.2 | Last Updated: 2024-12-17
+# Governance Owner: GRC-SecOps
+
+global_settings:
+  enforcement_mode: blocking # Options: monitoring, blocking
+  max_token_limit: 4096
+  allowed_models:
+    - "gpt-4-turbo"
+    - "claude-3-sonnet"
+
+data_classification_rules:
+  public:
+    allow_upload: true
+    logging_level: minimal
+  internal:
+    allow_upload: true
+    logging_level: full_audit
+  confidential:
+    allow_upload: false
+    remediation: "PII redaction required before processing"
+  restricted:
+    allow_upload: false
+    remediation: "Block transaction immediately"
+
+restricted_topics:
+  - "source_code_upload_without_approval"
+  - "customer_pii"
+  - "crypto_keys"
+  - "internal_passwords"
+
+guardrails:
+  input_sanitization: true
+  output_validation: true
+  hallucination_check:
+    enabled: true
+    threshold: 0.85 # Minimum confidence score required for citation
