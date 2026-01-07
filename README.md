@@ -25,12 +25,11 @@ This framework enforces security at every stage of the lifecycle:
 | **Policy Engine** | [`policies/generative_ai_aup.yaml`](policies/generative_ai_aup.yaml) | **The Brain.** YAML definition of acceptable use, including PII rules and wildcard model allow-lists (e.g., `gpt-4*`). |
 | **Input Guard** | [`guardrails/pii_scanner.py`](guardrails/pii_scanner.py) | **Layer 1:** Scans and redacts PII (SSN, Email, API Keys) using regex and heuristics *before* the LLM sees it. |
 | **Output Guard** | [`guardrails/output_scanner.py`](guardrails/output_scanner.py) | **Layer 5:** Scans LLM responses for data leakage (secrets), hallucinated URLs, or toxic content. |
-| **Diagrams** | [`diagrams/governance_flow.mermaid`](diagrams/governance_flow.mermaid) | Visual data flow diagram of the proxy architecture. |
 
-## 🚀 Quick Start (Demo)
+## 🧪 Demo Walkthrough
 
-This repository includes a fully functional CLI demo that simulates a User sending a prompt to an LLM.
+This repository includes a simulation (`main.py`) to demonstrate the governance logic in real-time.
 
-### 1. Installation
+### Step 1: Installation
 ```bash
 pip install -r requirements.txt
