@@ -1,33 +1,36 @@
-# Enterprise AI Governance Framework (5-Layer Model)
+# 🛡️ Enterprise AI Governance Framework (5-Layer Model)
 
-## 📌 Overview
-This repository contains the architectural patterns and "Policy-as-Code" templates for the **5-Layer AI Governance Model**. This framework is designed to allow regulated enterprises (CJIS, HIPAA, SOC 2) to adopt Generative AI (LLMs) while maintaining strict data control.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Architecture](https://img.shields.io/badge/Architecture-5--Layer_Security-orange)
+![Policy-as-Code](https://img.shields.io/badge/Policy-YAML_Enforcement-green)
+
+**A modular "Policy-as-Code" framework designed to allow regulated enterprises (CJIS, HIPAA, SOC 2) to adopt Generative AI while enforcing strict data controls.**
+
+This repository implements a **Governance Proxy** that sits between users and LLMs (like OpenAI or Anthropic). It intercepts traffic to sanitize inputs (Layer 1) and validate outputs (Layer 5) based on a central YAML policy.
 
 ## 🏗️ The 5-Layer Architecture
-This model enforces security at every stage of the LLM interaction lifecycle:
+This framework enforces security at every stage of the lifecycle:
 
 1.  **Input Layer:** Sanitization of prompts to prevent PII leakage and Jailbreak attempts.
 2.  **Boundary Layer:** Context window management and token budgeting.
-3.  **Process Layer (RAG):** Strictly scoped retrieval from verified "Master Answer Banks" (no hallucination).
+3.  **Process Layer (RAG):** Strictly scoped retrieval from verified "Master Answer Banks."
 4.  **Quality Layer:** Confidence scoring and citation verification.
-5.  **Safety Layer:** Final output scanning for bias, toxicity, or data leakage.
+5.  **Safety Layer:** Final output scanning for bias, toxicity, or training data leakage.
 
 ## 📂 Repository Contents
 
 | Component | File | Description |
 | :--- | :--- | :--- |
-| **Policy Config** | [`/policies/generative_ai_aup.yaml`](policies/generative_ai_aup.yaml) | YAML definition of the Acceptable Use Policy, including model allow-lists and data classification rules. |
-| **Safety Logic** | [`/guardrails/pii_scanner.py`](guardrails/pii_scanner.py) | Python module for the **Input/Safety Layers**. Scans payloads for PII (SSN, Credit Cards, API Keys) before processing. |
-| **Architecture** | [`/diagrams/governance_flow.mermaid`](diagrams/governance_flow.mermaid) | Visual data flow diagram illustrating where the governance proxy sits between the User and the LLM. |
+| **Orchestrator** | [`main.py`](main.py) | **Start Here.** A CLI simulation that runs the full governance pipeline (Input -> Mock LLM -> Output). |
+| **Policy Engine** | [`policies/generative_ai_aup.yaml`](policies/generative_ai_aup.yaml) | **The Brain.** YAML definition of acceptable use, including PII rules and wildcard model allow-lists (e.g., `gpt-4*`). |
+| **Input Guard** | [`guardrails/pii_scanner.py`](guardrails/pii_scanner.py) | **Layer 1:** Scans and redacts PII (SSN, Email, API Keys) using regex and heuristics *before* the LLM sees it. |
+| **Output Guard** | [`guardrails/output_scanner.py`](guardrails/output_scanner.py) | **Layer 5:** Scans LLM responses for data leakage (secrets), hallucinated URLs, or toxic content. |
+| **Diagrams** | [`diagrams/governance_flow.mermaid`](diagrams/governance_flow.mermaid) | Visual data flow diagram of the proxy architecture. |
 
-## 🚀 Integration Logic
-These templates are designed to be integrated into an API Gateway or Middleware (e.g., LangChain, LibreChat) to act as a **Governance Proxy**.
+## 🚀 Quick Start (Demo)
 
-**Example Logic Flow:**
-1.  **User sends prompt:** *"Analyze this customer data..."*
-2.  **Proxy intercepts:** Runs `pii_scanner.py`.
-3.  **Check:** If PII detected $\rightarrow$ Redact or Block based on `generative_ai_aup.yaml`.
-4.  **Forward:** Only clean data is sent to the Model Provider (OpenAI/Anthropic).
+This repository includes a fully functional CLI demo that simulates a User sending a prompt to an LLM.
 
----
-*Maintained by [Cody Keller](https://github.com/codyjkeller)*
+### 1. Installation
+```bash
+pip install -r requirements.txt
