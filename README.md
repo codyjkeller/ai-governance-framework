@@ -33,3 +33,61 @@ This repository includes a simulation (`main.py`) to demonstrate the governance 
 ### Step 1: Installation
 ```bash
 pip install -r requirements.txt
+```
+
+### Step 2: Run "Happy Path" (Redaction Demo)
+By default, the simulation sends a prompt containing an **Email Address**. The proxy will detect it, redact it, and allow the safe version to proceed.
+
+```bash
+python main.py
+```
+**Expected Output:**
+> ⚠️ PAYLOAD MODIFIED: Sensitive data redacted.
+> `[EMAIL_REDACTED]`
+
+### Step 3: Run "Data Leak" (Blocking Demo)
+To test Layer 5 (Output Safety), open `main.py` and comment/uncomment the scenarios at the bottom:
+
+```python
+# main.py (bottom of file)
+
+# run_governance_pipeline(safe_prompt)        # <--- Comment this out
+run_governance_pipeline(leak_prompt)          # <--- Uncomment this
+```
+
+Run the script again:
+```bash
+python main.py
+```
+**Expected Output:**
+> ⛔ OUTPUT BLOCKED: Response Blocked by Output Policy (Data Leakage Detected).
+
+## ⚙️ Logic Flow
+
+```mermaid
+graph TD
+    User[User / App] -->|Raw Prompt| API[API Gateway]
+    
+    subgraph "Governance Proxy (The Shield)"
+        API -->|Layer 1| PII{PII Scanner}
+        PII --"Contains SSN"--> Block[⛔ Block Request]
+        PII --"Contains Email"--> Redact[✂️ Redact Data]
+        PII --"Clean"--> LLM[External LLM]
+    end
+    
+    LLM -->|Raw Response| Safety{Output Scanner}
+    Safety --"Data Leak Detected"--> BlockOutput[⛔ Block Response]
+    Safety --"Safe"--> User
+    
+    style PII fill:#f96,stroke:#333
+    style Block fill:#f00,stroke:#333,color:#fff
+```
+
+## 🛡️ Supported Detections
+* **PII:** SSN, Email, Credit Cards, US Phone Numbers, Street Addresses, IP Addresses.
+* **Secrets:** API Keys (AWS, OpenAI, Generic tokens).
+* **Hallucinations:** Suspicious/Fake URLs in output.
+* **Model Enforcement:** Wildcard support (e.g., allow `claude-3*` but block `evil-gpt-v1`).
+
+---
+*Maintained by [Cody Keller](https://github.com/codyjkeller)*
