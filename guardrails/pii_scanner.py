@@ -18,11 +18,20 @@ class GovernanceProxy:
     before data reaches external Model Providers.
     """
     
-    # Robust patterns (Merged from your codebase)
+    # 🛡️ EXPANDED PATTERN LIBRARY
     PATTERNS = {
         'SSN': r'\b\d{3}-\d{2}-\d{4}\b',
         'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
         'CREDIT_CARD': r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+        
+        # New Patterns Added
+        'PHONE_US': r'\b(?:\+?1[-.]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
+        'IP_ADDRESS': r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
+        'US_ZIP_CODE': r'\b\d{5}(?:-\d{4})?\b',
+        
+        # Heuristic for Street Addresses (e.g., "123 Main St")
+        'STREET_ADDRESS': r'\b\d{1,5}\s+\w+(?:\s+\w+)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct)\b',
+        
         'API_KEY': r'(?i)(api_key|access_token|secret)\s*[:=]\s*[a-zA-Z0-9_\-]{20,}'
     }
 
@@ -74,13 +83,16 @@ class GovernanceProxy:
         # Scan text against regex patterns
         for pii_type, pattern in self.PATTERNS.items():
             # Get rule from YAML (default to 'confidential' behavior if not found)
+            # This allows new patterns to default to 'REDACT' without breaking the app
             rule = self.policy.get('data_rules', {}).get(pii_type.lower(), {
                 'sensitivity': 'UNKNOWN', 'action': 'REDACT'
             })
             
-            matches = re.findall(pattern, prompt_text)
+            matches = re.findall(pattern, prompt_text, re.IGNORECASE)
             if matches:
-                for m in matches:
+                # Remove duplicates to clean up report
+                unique_matches = list(set(matches))
+                for m in unique_matches:
                     violations.append({
                         "type": pii_type,
                         "sensitivity": rule['sensitivity'],
@@ -126,23 +138,20 @@ class GovernanceProxy:
 if __name__ == "__main__":
     proxy = GovernanceProxy()
 
-    # TEST 1: Check Model Whitelist (Layer 0)
-    test_models = ["gpt-4-turbo", "gpt-5-preview", "evil-gpt-v1"]
-    print("\n--- Model Validation Test ---")
-    for m in test_models:
-        status = "✅ Allowed" if proxy.is_model_allowed(m) else "❌ Blocked"
-        print(f"Model '{m}': {status}")
-
-    # TEST 2: PII Scan (Layer 1)
-    bad_prompt = """
-    Debug this user session:
-    User: Cody Keller
-    Email: cody@example.com
-    SSN: 123-45-6789
-    API_KEY: sk-1234567890abcdef1234567890abcdef
+    print("\n--- TEST: Expanded Pattern Matching ---")
+    
+    # A realistic "noisy" prompt a user might paste
+    complex_prompt = """
+    Hi AI, I need help formatting this customer list for the CRM:
+    
+    1. John Doe - 555-0199 - 123 Maple Ave, Springfield
+    2. Jane Smith - (415) 555-1234 - 456 Oak Dr, San Francisco
+    3. Server Config: 192.168.1.55 connected to database.
+    
+    Please convert to JSON.
     """
     
-    clean_prompt, status = proxy.scan_prompt(bad_prompt)
+    clean_prompt, status = proxy.scan_prompt(complex_prompt)
     
     if status == "SAFE":
         print(f"\n[Forwarding to LLM]:\n{clean_prompt}")
