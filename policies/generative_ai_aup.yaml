@@ -1,13 +1,31 @@
 # Enterprise Generative AI Acceptable Use Policy (AUP)
-# Version: 1.2 | Last Updated: 2024-12-17
+# Version: 2.0 | Last Updated: 2026-01-07
 # Governance Owner: GRC-SecOps
 
 global_settings:
-  enforcement_mode: blocking # Options: monitoring, blocking
-  max_token_limit: 4096
-  allowed_models:
-    - "gpt-4-turbo"
-    - "claude-3-sonnet"
+  enforcement_mode: blocking  # Options: monitoring, blocking
+  max_token_limit: 8192       # Increased to support larger context windows (RAG)
+  
+  # MODEL ALLOW-LIST (WILDCARD ENABLED)
+  # The Governance Proxy will match these patterns against the requested model ID.
+  # This future-proofs the policy (e.g., "gpt-*" automatically allows gpt-5 when released).
+  allowed_model_families:
+    # OpenAI (Enterprise Standard)
+    - "gpt-4*"          # Covers gpt-4, gpt-4-turbo, gpt-4o, gpt-4o-mini
+    - "gpt-5*"          # Forward compatibility
+    - "o1-*"            # Reasoning models
+    
+    # Anthropic (High Safety/Compliance)
+    - "claude-3*"       # Covers opus, sonnet, haiku, 3.5 variants
+    - "claude-4*"       # Forward compatibility
+    
+    # Google (Vertex AI)
+    - "gemini-1.5*"     # Pro and Flash variants
+    - "gemini-ultra*"
+    
+    # Open Source / Self-Hosted (Approved for internal deployment)
+    - "llama-3*"        # Meta Llama 3 family
+    - "mistral-large*"  # Mistral AI (EU Compliance)
 
 data_classification_rules:
   public:
@@ -28,6 +46,7 @@ restricted_topics:
   - "customer_pii"
   - "crypto_keys"
   - "internal_passwords"
+  - "jailbreak_attempts"
 
 guardrails:
   input_sanitization: true
