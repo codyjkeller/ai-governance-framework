@@ -18,21 +18,27 @@ class GovernanceProxy:
     before data reaches external Model Providers.
     """
     
-    # 🛡️ EXPANDED PATTERN LIBRARY
+    # 🛡️ EXPANDED PATTERN LIBRARY (PII, HIPAA, SECRETS)
     PATTERNS = {
+        # --- 1. GENERAL PII ---
         'SSN': r'\b\d{3}-\d{2}-\d{4}\b',
         'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-        'CREDIT_CARD': r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
-        
-        # New Patterns Added
         'PHONE_US': r'\b(?:\+?1[-.]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
-        'IP_ADDRESS': r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
         'US_ZIP_CODE': r'\b\d{5}(?:-\d{4})?\b',
         
-        # Heuristic for Street Addresses (e.g., "123 Main St")
-        'STREET_ADDRESS': r'\b\d{1,5}\s+\w+(?:\s+\w+)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct)\b',
+        # --- 2. FINANCIAL & ASSETS ---
+        'CREDIT_CARD': r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+        'VIN_NUMBER': r'\b(?![a-z])[A-HJ-NPR-Z0-9]{17}\b',  # 17-char Vehicle ID (No I, O, Q)
         
-        'API_KEY': r'(?i)(api_key|access_token|secret)\s*[:=]\s*[a-zA-Z0-9_\-]{20,}'
+        # --- 3. INFRASTRUCTURE & SECRETS ---
+        'IP_ADDRESS': r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
+        'AWS_ACCESS_KEY': r'\b(AKIA|ASIA)[0-9A-Z]{16}\b',   # AWS Key ID Pattern
+        'PRIVATE_KEY_BLOCK': r'-----BEGIN\s+(?:RSA|EC|DSA|OPENSSH)\s+PRIVATE\s+KEY-----',
+        'API_KEY_GENERIC': r'(?i)(api_key|access_token|secret)\s*[:=]\s*[a-zA-Z0-9_\-]{20,}',
+
+        # --- 4. HIPAA / MEDICAL ---
+        'ICD10_CODE': r'\b[A-Z]\d{2}\.\d{1,3}\b',           # Medical Diagnosis (e.g., J01.90)
+        'DEA_NUMBER': r'\b[A-Z]{2}\d{7}\b',                 # Doctor/Prescriber License ID
     }
 
     def __init__(self, policy_path="policies/generative_ai_aup.yaml"):
@@ -52,20 +58,17 @@ class GovernanceProxy:
             with open(path, "r") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
-            console.print(f"[red]❌ Critical Error: Policy file '{path}' not found.[/red]")
-            return {}
-
-    def is_model_allowed(self, requested_model):
-        """
-        Checks if the requested model ID matches the allow-list patterns.
-        Supports wildcards (e.g., 'gpt-4*').
-        """
-        allowed_patterns = self.policy.get('global_settings', {}).get('allowed_model_families', [])
-        
-        for pattern in allowed_patterns:
-            if fnmatch.fnmatch(requested_model, pattern):
-                return True
-        return False
+            # Create a dummy policy in memory if file is missing to prevent crash
+            console.print(f"[yellow]⚠️  Warning: Policy file '{path}' not found. Using default rules.[/yellow]")
+            return {
+                'global_settings': {'enforcement_mode': 'blocking'},
+                'data_rules': {
+                    'ssn': {'action': 'BLOCK', 'sensitivity': 'CRITICAL'},
+                    'aws_access_key': {'action': 'BLOCK', 'sensitivity': 'CRITICAL'},
+                    'icd10_code': {'action': 'REDACT', 'sensitivity': 'HIGH'},
+                    'default': {'action': 'REDACT', 'sensitivity': 'UNKNOWN'}
+                }
+            }
 
     def scan_prompt(self, prompt_text):
         """
@@ -82,10 +85,9 @@ class GovernanceProxy:
 
         # Scan text against regex patterns
         for pii_type, pattern in self.PATTERNS.items():
-            # Get rule from YAML (default to 'confidential' behavior if not found)
-            # This allows new patterns to default to 'REDACT' without breaking the app
+            # Get rule from YAML (default to 'REDACT' behavior if not found)
             rule = self.policy.get('data_rules', {}).get(pii_type.lower(), {
-                'sensitivity': 'UNKNOWN', 'action': 'REDACT'
+                'sensitivity': 'HIGH', 'action': 'REDACT'
             })
             
             matches = re.findall(pattern, prompt_text, re.IGNORECASE)
@@ -115,7 +117,7 @@ class GovernanceProxy:
     def _generate_report(self, violations, blocked):
         """Outputs a rich table summary of the scan."""
         if not violations:
-            console.print("[green]✅ Clean Payload. No PII detected.[/green]")
+            console.print("[green]✅ Clean Payload. No Sensitive Data detected.[/green]")
             return
 
         table = Table(title="⚠️  Governance Violations Detected")
@@ -130,25 +132,24 @@ class GovernanceProxy:
         console.print(table)
         
         if blocked:
-            console.print(Panel("[bold red]⛔ TRANSACTION BLOCKED BY POLICY[/bold red]\nRestricted data detected. Payload dropped.", border_style="red"))
+            console.print(Panel("[bold red]⛔ TRANSACTION BLOCKED BY POLICY[/bold red]\nCritical infrastructure or Identity data detected.", border_style="red"))
         else:
-            console.print(Panel("[bold yellow]⚠️  PAYLOAD MODIFIED[/bold yellow]\nSensitive data redacted. Forwarding sanitized prompt.", border_style="yellow"))
+            console.print(Panel("[bold yellow]⚠️  PAYLOAD MODIFIED[/bold yellow]\nSensitive data redacted. Forwarding sanitized prompt to LLM.", border_style="yellow"))
 
 # --- DEMO RUNNER ---
 if __name__ == "__main__":
     proxy = GovernanceProxy()
 
-    print("\n--- TEST: Expanded Pattern Matching ---")
+    print("\n--- TEST: Multi-Domain Scanner (HIPAA, Secrets, PII) ---")
     
-    # A realistic "noisy" prompt a user might paste
+    # A realistic "dangerous" prompt mixing Medical, Infra, and PII
     complex_prompt = """
-    Hi AI, I need help formatting this customer list for the CRM:
+    Summarize this patient note for Dr. Smith (DEA: AB1234567):
+    Patient diagnosed with J01.90 (Acute sinusitis).
     
-    1. John Doe - 555-0199 - 123 Maple Ave, Springfield
-    2. Jane Smith - (415) 555-1234 - 456 Oak Dr, San Francisco
-    3. Server Config: 192.168.1.55 connected to database.
-    
-    Please convert to JSON.
+    Also, we migrated the database.
+    AWS Creds: AKIAIOSFODNN7EXAMPLE
+    Server IP: 192.168.1.55
     """
     
     clean_prompt, status = proxy.scan_prompt(complex_prompt)
