@@ -1,56 +1,59 @@
-# Enterprise Generative AI Acceptable Use Policy (AUP)
-# Version: 2.0 | Last Updated: 2026-01-07
-# Governance Owner: GRC-SecOps
+# Enterprise AI Acceptable Use Policy (AUP)
+# This file controls the behavior of the Governance Proxy.
 
 global_settings:
-  enforcement_mode: blocking  # Options: monitoring, blocking
-  max_token_limit: 8192       # Increased to support larger context windows (RAG)
-  
-  # MODEL ALLOW-LIST (WILDCARD ENABLED)
-  # The Governance Proxy will match these patterns against the requested model ID.
-  # This future-proofs the policy (e.g., "gpt-*" automatically allows gpt-5 when released).
+  policy_version: "2.1"
+  enforcement_mode: "blocking"  # Options: blocking, monitoring
   allowed_model_families:
-    # OpenAI (Enterprise Standard)
-    - "gpt-4*"          # Covers gpt-4, gpt-4-turbo, gpt-4o, gpt-4o-mini
-    - "gpt-5*"          # Forward compatibility
-    - "o1-*"            # Reasoning models
-    
-    # Anthropic (High Safety/Compliance)
-    - "claude-3*"       # Covers opus, sonnet, haiku, 3.5 variants
-    - "claude-4*"       # Forward compatibility
-    
-    # Google (Vertex AI)
-    - "gemini-1.5*"     # Pro and Flash variants
-    - "gemini-ultra*"
-    
-    # Open Source / Self-Hosted (Approved for internal deployment)
-    - "llama-3*"        # Meta Llama 3 family
-    - "mistral-large*"  # Mistral AI (EU Compliance)
+    - "gpt-4*"
+    - "claude-3*"
+    - "gemini-pro"
 
-data_classification_rules:
-  public:
-    allow_upload: true
-    logging_level: minimal
-  internal:
-    allow_upload: true
-    logging_level: full_audit
-  confidential:
-    allow_upload: false
-    remediation: "PII redaction required before processing"
-  restricted:
-    allow_upload: false
-    remediation: "Block transaction immediately"
+# --- DATA LOSS PREVENTION (DLP) RULES ---
+# sensitivity: LOW, MEDIUM, HIGH, CRITICAL
+# action: ALLOW, REDACT, BLOCK
 
-restricted_topics:
-  - "source_code_upload_without_approval"
-  - "customer_pii"
-  - "crypto_keys"
-  - "internal_passwords"
-  - "jailbreak_attempts"
+data_rules:
+  # Identity (PII)
+  ssn:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  email:
+    sensitivity: "MEDIUM"
+    action: "REDACT"
+  phone_us:
+    sensitivity: "MEDIUM"
+    action: "REDACT"
+  us_zip_code:
+    sensitivity: "LOW"
+    action: "ALLOW"
 
-guardrails:
-  input_sanitization: true
-  output_validation: true
-  hallucination_check:
-    enabled: true
-    threshold: 0.85 # Minimum confidence score required for citation
+  # Financial & Assets
+  credit_card:
+    sensitivity: "HIGH"
+    action: "BLOCK"
+  vin_number:
+    sensitivity: "MEDIUM"
+    action: "REDACT"
+
+  # Infrastructure & Secrets (DevOps)
+  aws_access_key:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  private_key_block:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  api_key_generic:
+    sensitivity: "HIGH"
+    action: "BLOCK"
+  ip_address:
+    sensitivity: "MEDIUM"
+    action: "REDACT"
+
+  # Healthcare (HIPAA)
+  icd10_code:
+    sensitivity: "HIGH"
+    action: "REDACT"
+  dea_number:
+    sensitivity: "HIGH"
+    action: "REDACT"
