@@ -32,11 +32,11 @@ This framework acts as a **"Governance Proxy"**—a middleware layer (FastAPI) t
 git clone [https://github.com/codyjkeller/ai-governance-framework.git](https://github.com/codyjkeller/ai-governance-framework.git)
 cd ai-governance-framework
 pip install -r requirements.txt
+```
 
-2. Configure Your Policy
-Edit policies/generative_ai_aup.yaml to define what is blocked vs. redacted:
-
-YAML
+#### 2. Configure Your Policy
+Edit `policies/generative_ai_aup.yaml` to define what is blocked vs. redacted:
+```yaml
 aws_access_key:
   sensitivity: "CRITICAL"
   action: "BLOCK"
@@ -44,25 +44,32 @@ aws_access_key:
 email:
   sensitivity: "MEDIUM"
   action: "REDACT"
+```
 
-3. Run the Governance Server (Production Mode)
+#### 3. Run the Governance Server (Production Mode)
 Start the FastAPI proxy to govern real-time traffic:
-
-Bash
+```bash
 python server.py
 # Server running at [http://0.0.0.0:8000](http://0.0.0.0:8000)
-4. Run the CLI Demo (Testing Mode)
+```
+
+#### 4. Run the CLI Demo (Testing Mode)
 Visually test your policy rules without starting the server:
-
-Bash
+```bash
 python cli_demo.py
-5. View Audit Logs
-Check the compliance logs to see blocked/redacted transactions:
+```
 
-Bash
+#### 5. View Audit Logs
+Check the compliance logs to see blocked/redacted transactions:
+```bash
 cat audit_logs/governance_events.jsonl
-🧠 Architecture Logic
-Code snippet
+```
+
+---
+
+### 🧠 Architecture Logic
+
+```mermaid
 graph LR
     User[User / App] -->|POST /chat/completions| Proxy{FastAPI Proxy}
     
@@ -82,8 +89,13 @@ graph LR
 
     style Block fill:#f96,stroke:#333,stroke-width:2px
     style Allow fill:#9f9,stroke:#333,stroke-width:2px
-📂 File Structure
-Plaintext
+```
+
+---
+
+### 📂 File Structure
+
+```text
 .
 ├── server.py                   # Main FastAPI Application (Production Entrypoint)
 ├── cli_demo.py                 # Visual CLI Tool for testing policies
@@ -96,3 +108,4 @@ Plaintext
 ├── audit_logs/                 # Generated Compliance Logs
 ├── requirements.txt            # Dependencies (FastAPI, Uvicorn, Rich)
 └── README.md                   # Documentation
+```
