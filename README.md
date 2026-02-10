@@ -1,3 +1,8 @@
+### 1. `README.md`
+
+```markdown
+# Enterprise AI Governance Framework
+
 ## Layer 7 Security & Guardrails for Generative AI
 
 ---
@@ -88,7 +93,6 @@ graph LR
 ---
 
 ### 2. `guardrails/governance_guardrail.py`
-*Removed emojis from console output and comments. Switched "Shield" icons to standard text labels.*
 
 ```python
 import re
@@ -253,7 +257,6 @@ if __name__ == "__main__":
 ---
 
 ### 3. `guardrails/output_scanner.py`
-*Removed emojis from console output.*
 
 ```python
 import re
@@ -364,8 +367,7 @@ if __name__ == "__main__":
 
 ---
 
-### 4. `cli_demo.py` (Renamed from `clli_demo.py`)
-*Standardized the output for the CLI tool.*
+### 4. `cli_demo.py`
 
 ```python
 import time
