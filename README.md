@@ -1,11 +1,3 @@
-Here are the refactored files. I have stripped all emojis, professionalized the logging/console outputs, and standardized the documentation headers to be cleaner and more corporate.
-
-### 1. `README.md`
-*Removed badges, emojis, and standardized the headers.*
-
-```markdown
-# Enterprise AI Governance Framework
-
 ## Layer 7 Security & Guardrails for Generative AI
 
 ---
