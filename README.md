@@ -1,6 +1,3 @@
-### 1. `README.md`
-
-```markdown
 # Enterprise AI Governance Framework
 
 ## Layer 7 Security & Guardrails for Generative AI
@@ -27,13 +24,14 @@ This framework acts as a **Governance Proxy**—a middleware layer (FastAPI) tha
 
 #### 1. Clone & Install
 ```bash
-git clone https://github.com/codyjkeller/ai-governance-framework.git
+git clone [https://github.com/codyjkeller/ai-governance-framework.git](https://github.com/codyjkeller/ai-governance-framework.git)
 cd ai-governance-framework
 pip install -r requirements.txt
 ```
 
 #### 2. Configure Your Policy
 Edit `policies/generative_ai_aup.yaml` to define what is blocked vs. redacted:
+
 ```yaml
 aws_access_key:
   sensitivity: "CRITICAL"
@@ -46,19 +44,22 @@ email:
 
 #### 3. Run the Governance Server (Production Mode)
 Start the FastAPI proxy to govern real-time traffic:
+
 ```bash
 python server.py
-# Server running at http://0.0.0.0:8000
+# Server running at [http://0.0.0.0:8000](http://0.0.0.0:8000)
 ```
 
 #### 4. Run the CLI Demo (Testing Mode)
 Visually test your policy rules without starting the server:
+
 ```bash
 python cli_demo.py
 ```
 
 #### 5. View Audit Logs
 Check the compliance logs to see blocked/redacted transactions:
+
 ```bash
 cat audit_logs/governance_events.jsonl
 ```
@@ -88,6 +89,3 @@ graph LR
     style Block fill:#f96,stroke:#333,stroke-width:2px
     style Allow fill:#9f9,stroke:#333,stroke-width:2px
 ```
-```
-
----
