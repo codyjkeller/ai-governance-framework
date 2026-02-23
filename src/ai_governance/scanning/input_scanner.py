@@ -43,7 +43,7 @@ class InputScanner(BaseScanner):
               - text: The sanitized prompt (None if blocked).
               - violations: List of all matches with metadata.
         """
-        violations: list[dict] = []
+        violations: list[dict[str, Any]] = []
         modified_text = text
         is_blocked = False
 

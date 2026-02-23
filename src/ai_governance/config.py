@@ -123,4 +123,4 @@ def get_settings() -> Settings:
     Call this instead of constructing Settings() directly so
     the configuration is loaded and validated exactly once.
     """
-    return Settings()
+    return Settings()  # type: ignore[call-arg]  # llm_api_key loaded from env var at runtime

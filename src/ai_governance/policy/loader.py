@@ -121,7 +121,8 @@ def get_enforcement_mode(policy: dict[str, Any], env_override: str = "") -> str:
     """
     if env_override:
         return env_override
-    return policy.get("global_settings", {}).get("enforcement_mode", "blocking")
+    mode: str = policy.get("global_settings", {}).get("enforcement_mode", "blocking")
+    return mode
 
 
 def get_allowed_models(policy: dict[str, Any]) -> list[str]:
@@ -134,7 +135,8 @@ def get_allowed_models(policy: dict[str, Any]) -> list[str]:
         List of glob-style model patterns (e.g., ['gpt-4*', 'claude-3*']).
         Empty list means all models are allowed.
     """
-    return policy.get("global_settings", {}).get("allowed_model_families", [])
+    models: list[str] = policy.get("global_settings", {}).get("allowed_model_families", [])
+    return models
 
 
 def get_data_rule(policy: dict[str, Any], rule_name: str) -> dict[str, str]:
@@ -148,7 +150,8 @@ def get_data_rule(policy: dict[str, Any], rule_name: str) -> dict[str, str]:
         Dict with 'action' and 'sensitivity' keys.
         Falls back to REDACT/HIGH if the rule is not defined.
     """
-    return policy.get("data_rules", {}).get(
+    rule: dict[str, str] = policy.get("data_rules", {}).get(
         rule_name.lower(),
         {"action": "REDACT", "sensitivity": "HIGH"},
     )
+    return rule

@@ -14,6 +14,7 @@ This is the main application entrypoint. It:
 import fnmatch
 import logging
 import uuid
+from typing import Any
 
 import structlog
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
@@ -116,7 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # --- Health check ---
     @app.get("/health")
-    async def health_check() -> dict:
+    async def health_check() -> dict[str, Any]:
         """Health check endpoint for load balancers and container orchestration."""
         return {
             "status": "healthy",
@@ -127,7 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # --- Audit log verification ---
     @app.get("/admin/audit/verify")
-    async def verify_audit_log(request: Request) -> dict:
+    async def verify_audit_log(request: Request) -> dict[str, Any]:
         """Verify the integrity of the audit log chain.
 
         Requires authentication (same API key header as the main endpoint).
@@ -146,7 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         chat_request: ChatRequest,
         background_tasks: BackgroundTasks,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Governance-proxied chat completion.
 
         1. Authenticate the request

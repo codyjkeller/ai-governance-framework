@@ -39,7 +39,7 @@ class OutputScanner(BaseScanner):
               - text: The original response if clean, a blocked message if not.
               - violations: List of all matches.
         """
-        violations: list[dict] = []
+        violations: list[dict[str, Any]] = []
 
         for _pattern_key, pattern_def in OUTPUT_PATTERNS.items():
             matches = pattern_def.regex.findall(text)

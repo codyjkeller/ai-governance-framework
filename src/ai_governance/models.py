@@ -4,6 +4,8 @@ These models enforce structure and constraints on all data
 entering and leaving the proxy.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -62,7 +64,7 @@ class ChatRequest(BaseModel):
             raise ValueError(msg)
         return v
 
-    def to_upstream_dict(self) -> dict:
+    def to_upstream_dict(self) -> dict[str, Any]:
         """Serialize for the upstream LLM provider, stripping internal fields.
 
         The upstream API (OpenAI, Azure, etc.) does not know about user_id
@@ -88,7 +90,7 @@ class ScanResult(BaseModel):
         default=None,
         description="The processed text (sanitized or original). None if blocked.",
     )
-    violations: list[dict] = Field(
+    violations: list[dict[str, Any]] = Field(
         default_factory=list,
         description="List of detected violations with type, sensitivity, and action.",
     )
