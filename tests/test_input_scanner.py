@@ -5,10 +5,6 @@ and one true-negative test (should NOT match or should not cause
 incorrect action).
 """
 
-import pytest
-
-from ai_governance.scanning.input_scanner import InputScanner
-
 
 class TestSSNDetection:
     def test_blocks_standard_ssn(self, input_scanner):

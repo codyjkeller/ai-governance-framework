@@ -16,7 +16,7 @@ import logging
 import uuid
 
 import structlog
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -313,7 +313,7 @@ def main() -> None:
     settings = get_settings()
     uvicorn.run(
         "ai_governance.server:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # noqa: S104 - Intentional: server must bind to all interfaces
         port=8000,
         log_level=settings.log_level.lower(),
         reload=False,

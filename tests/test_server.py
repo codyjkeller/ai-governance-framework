@@ -8,8 +8,6 @@ the governance layers only. The upstream call would need to be
 mocked for integration tests (future work).
 """
 
-import pytest
-
 
 class TestHealthCheck:
     def test_health_returns_200(self, test_client):

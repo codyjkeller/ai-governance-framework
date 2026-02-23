@@ -4,7 +4,6 @@ These fixtures provide pre-configured scanners, policies, and
 test clients that all test modules can reuse.
 """
 
-import os
 from pathlib import Path
 
 import pytest

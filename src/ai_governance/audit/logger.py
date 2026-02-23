@@ -14,7 +14,7 @@ store in addition to local file output.
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +78,7 @@ class AuditLogger:
             policy_version: Version string from the active policy.
         """
         entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "event_type": event_type,
             "transaction_id": transaction_id,
             "user_id": user_id,

@@ -4,10 +4,6 @@ Verifies that the output scanner catches data leakage in LLM responses
 and allows clean responses through.
 """
 
-import pytest
-
-from ai_governance.scanning.output_scanner import OutputScanner
-
 
 class TestLeakedAPIKeyDetection:
     def test_blocks_leaked_api_key(self, output_scanner):

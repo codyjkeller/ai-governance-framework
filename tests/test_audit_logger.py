@@ -5,8 +5,6 @@ Verifies JSONL output, hash chain integrity, and tamper detection.
 
 import json
 
-import pytest
-
 from ai_governance.audit.logger import AuditLogger
 
 
@@ -61,7 +59,7 @@ class TestHashChainIntegrity:
 
         # Verification should fail
         new_logger = AuditLogger(audit_logger.log_path)
-        is_valid, count = new_logger.verify_chain()
+        is_valid, _ = new_logger.verify_chain()
         assert is_valid is False
 
     def test_survives_restart(self, tmp_path):

@@ -41,7 +41,7 @@ class OutputScanner(BaseScanner):
         """
         violations: list[dict] = []
 
-        for pattern_key, pattern_def in OUTPUT_PATTERNS.items():
+        for _pattern_key, pattern_def in OUTPUT_PATTERNS.items():
             matches = pattern_def.regex.findall(text)
             if not matches:
                 continue

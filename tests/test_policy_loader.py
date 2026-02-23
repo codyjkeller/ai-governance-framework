@@ -4,10 +4,6 @@ Covers: valid policy loading, missing file fallback, malformed YAML,
 and helper functions for enforcement mode, model allowlisting, and rule lookup.
 """
 
-from pathlib import Path
-
-import pytest
-
 from ai_governance.policy.loader import (
     DEFAULT_POLICY,
     get_allowed_models,

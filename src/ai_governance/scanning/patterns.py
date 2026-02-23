@@ -50,7 +50,10 @@ INPUT_PATTERNS: dict[str, PatternDefinition] = {
         name="US_ZIP_CODE",
         regex=re.compile(r"\b\d{5}(?:-\d{4})?\b"),
         description="US ZIP codes (5-digit and ZIP+4).",
-        false_positive_notes="HIGH. Matches any 5-digit number. Use with ALLOW action unless combined with address context.",
+        false_positive_notes=(
+            "HIGH. Matches any 5-digit number. "
+            "Use with ALLOW action unless combined with address context."
+        ),
     ),
 
     # --- Financial ---
@@ -100,8 +103,10 @@ INPUT_PATTERNS: dict[str, PatternDefinition] = {
         name="ICD10_CODE",
         regex=re.compile(r"\b[A-TV-Z]\d{2}(?:\.\d{1,4})?\b"),
         description="ICD-10 medical diagnosis codes (e.g., J01.90).",
-        false_positive_notes="Moderate. Restricted first-letter range (A-T, V-Z) reduces false positives vs old pattern. "
-        "U-codes are reserved by WHO. Still may match part numbers or identifiers.",
+        false_positive_notes=(
+            "Moderate. Restricted first-letter range (A-T, V-Z) reduces false positives vs old pattern. "
+            "U-codes are reserved by WHO. Still may match part numbers or identifiers."
+        ),
     ),
     "dea_number": PatternDefinition(
         name="DEA_NUMBER",

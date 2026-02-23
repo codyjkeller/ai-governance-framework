@@ -4,8 +4,8 @@ All settings are loaded from environment variables and validated at startup.
 If a required variable is missing or invalid, the application refuses to start.
 """
 
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
