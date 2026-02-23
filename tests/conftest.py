@@ -62,8 +62,10 @@ def test_client(test_settings):
     """
     # Clear the lru_cache so our test settings take effect
     from ai_governance.config import get_settings
+
     get_settings.cache_clear()
 
     from ai_governance.server import create_app
+
     app = create_app(settings=test_settings)
     return TestClient(app)

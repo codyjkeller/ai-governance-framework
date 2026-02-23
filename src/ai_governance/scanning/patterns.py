@@ -51,11 +51,9 @@ INPUT_PATTERNS: dict[str, PatternDefinition] = {
         regex=re.compile(r"\b\d{5}(?:-\d{4})?\b"),
         description="US ZIP codes (5-digit and ZIP+4).",
         false_positive_notes=(
-            "HIGH. Matches any 5-digit number. "
-            "Use with ALLOW action unless combined with address context."
+            "HIGH. Matches any 5-digit number. Use with ALLOW action unless combined with address context."
         ),
     ),
-
     # --- Financial ---
     "credit_card": PatternDefinition(
         name="CREDIT_CARD",
@@ -69,13 +67,10 @@ INPUT_PATTERNS: dict[str, PatternDefinition] = {
         description="Vehicle Identification Numbers (17 chars, no I/O/Q).",
         false_positive_notes="HIGH. Matches any 17-char uppercase alphanumeric string (tokens, hashes, etc.).",
     ),
-
     # --- Infrastructure & Secrets ---
     "ip_address": PatternDefinition(
         name="IP_ADDRESS",
-        regex=re.compile(
-            r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
-        ),
+        regex=re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"),
         description="IPv4 addresses with valid octet ranges (0-255).",
         false_positive_notes="Low. Validates octet ranges. May match version strings in rare cases.",
     ),
@@ -97,7 +92,6 @@ INPUT_PATTERNS: dict[str, PatternDefinition] = {
         description="Generic API keys/tokens in key=value format.",
         false_positive_notes="Moderate. May match config file examples or documentation snippets.",
     ),
-
     # --- Healthcare (HIPAA) ---
     "icd10_code": PatternDefinition(
         name="ICD10_CODE",

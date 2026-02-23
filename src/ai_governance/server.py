@@ -195,7 +195,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if input_result.status == "BLOCKED":
             violation_types = ", ".join(v["type"] for v in input_result.violations)
             background_tasks.add_task(
-                notify_jira, settings.jira_webhook, transaction_id, user_id, violation_types,
+                notify_jira,
+                settings.jira_webhook,
+                transaction_id,
+                user_id,
+                violation_types,
             )
             if not is_monitoring:
                 raise HTTPException(
@@ -233,7 +237,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 policy_version=policy_version,
             )
             background_tasks.add_task(
-                notify_jira, settings.jira_webhook, transaction_id, user_id,
+                notify_jira,
+                settings.jira_webhook,
+                transaction_id,
+                user_id,
                 "Data leakage detected in LLM response",
             )
             if not is_monitoring:

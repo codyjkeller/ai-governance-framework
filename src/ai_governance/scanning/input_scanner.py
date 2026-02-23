@@ -82,9 +82,7 @@ class InputScanner(BaseScanner):
                 if action == "BLOCK":
                     is_blocked = True
                 elif action == "REDACT":
-                    modified_text = modified_text.replace(
-                        match_value, f"[{pattern_def.name}_REDACTED]"
-                    )
+                    modified_text = modified_text.replace(match_value, f"[{pattern_def.name}_REDACTED]")
                 # ALLOW = do nothing
 
         if is_blocked:

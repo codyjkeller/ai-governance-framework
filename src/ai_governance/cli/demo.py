@@ -60,17 +60,20 @@ def render_scan_result(result: ScanResult, scan_name: str) -> None:
     console.print(table)
 
     if result.status == "BLOCKED":
-        console.print(Panel(
-            "[bold red]TRANSACTION BLOCKED BY POLICY[/bold red]\n"
-            "Critical infrastructure or identity data detected.",
-            border_style="red",
-        ))
+        console.print(
+            Panel(
+                "[bold red]TRANSACTION BLOCKED BY POLICY[/bold red]\n"
+                "Critical infrastructure or identity data detected.",
+                border_style="red",
+            )
+        )
     elif result.status == "REDACTED":
-        console.print(Panel(
-            "[bold yellow]PAYLOAD MODIFIED[/bold yellow]\n"
-            "Sensitive data redacted. Sanitized prompt shown below.",
-            border_style="yellow",
-        ))
+        console.print(
+            Panel(
+                "[bold yellow]PAYLOAD MODIFIED[/bold yellow]\nSensitive data redacted. Sanitized prompt shown below.",
+                border_style="yellow",
+            )
+        )
 
 
 def mock_llm_call(prompt: str) -> str:
@@ -102,11 +105,13 @@ def run_demo_pipeline(user_prompt: str, policy_path: Path = DEFAULT_POLICY_PATH)
     console.rule("[bold blue]Enterprise AI Governance Proxy[/bold blue]")
 
     # Step 1: Show the input
-    console.print(Panel(
-        f"[bold]User Prompt:[/bold]\n{user_prompt}",
-        title="Step 1: Ingress",
-        border_style="blue",
-    ))
+    console.print(
+        Panel(
+            f"[bold]User Prompt:[/bold]\n{user_prompt}",
+            title="Step 1: Ingress",
+            border_style="blue",
+        )
+    )
 
     # Step 2: Input scan
     console.print("\n[bold yellow]Running Layer 1: Input Sanitization...[/bold yellow]")
@@ -131,11 +136,13 @@ def run_demo_pipeline(user_prompt: str, policy_path: Path = DEFAULT_POLICY_PATH)
     render_scan_result(output_result, "Output Scan")
 
     if output_result.status == "BLOCKED":
-        console.print(Panel(
-            "The model attempted to generate restricted content. Response suppressed.",
-            title="Security Alert",
-            border_style="red",
-        ))
+        console.print(
+            Panel(
+                "The model attempted to generate restricted content. Response suppressed.",
+                title="Security Alert",
+                border_style="red",
+            )
+        )
         return
 
     # Step 5: Safe delivery
@@ -149,22 +156,13 @@ def main() -> None:
 
     # Scenario 1: PII Redaction
     console.print("\n[bold]--- SCENARIO 1: PII Redaction ---[/bold]\n")
-    run_demo_pipeline(
-        "Please process this user record:\n"
-        "Name: John Doe\n"
-        "Email: john.doe@example.com\n"
-        "Status: Active"
-    )
+    run_demo_pipeline("Please process this user record:\nName: John Doe\nEmail: john.doe@example.com\nStatus: Active")
 
     time.sleep(2)
 
     # Scenario 2: Secret Detection (BLOCK)
     console.print("\n[bold]--- SCENARIO 2: Secret Detection (Block) ---[/bold]\n")
-    run_demo_pipeline(
-        "We migrated the database.\n"
-        "AWS Creds: AKIAIOSFODNN7EXAMPLE\n"
-        "Server IP: 192.168.1.55"
-    )
+    run_demo_pipeline("We migrated the database.\nAWS Creds: AKIAIOSFODNN7EXAMPLE\nServer IP: 192.168.1.55")
 
     time.sleep(2)
 

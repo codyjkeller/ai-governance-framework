@@ -90,14 +90,20 @@ def _validate_policy(policy: dict[str, Any], policy_path: Path) -> None:
         if action not in VALID_ACTIONS:
             logger.warning(
                 "Policy '%s': rule '%s' has invalid action '%s'. Valid: %s",
-                policy_path, rule_name, action, VALID_ACTIONS,
+                policy_path,
+                rule_name,
+                action,
+                VALID_ACTIONS,
             )
 
         sensitivity = rule_config.get("sensitivity", "")
         if sensitivity not in VALID_SENSITIVITIES:
             logger.warning(
                 "Policy '%s': rule '%s' has invalid sensitivity '%s'. Valid: %s",
-                policy_path, rule_name, sensitivity, VALID_SENSITIVITIES,
+                policy_path,
+                rule_name,
+                sensitivity,
+                VALID_SENSITIVITIES,
             )
 
 

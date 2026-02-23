@@ -85,10 +85,7 @@ class Settings(BaseSettings):
         """Prevent the application from starting with a placeholder API key."""
         placeholders = {"sk-proj-...", "sk-...", "your-key-here", "CHANGE_ME", ""}
         if v.strip() in placeholders:
-            msg = (
-                "LLM_API_KEY is set to a placeholder value. "
-                "Set a real API key in your environment variables."
-            )
+            msg = "LLM_API_KEY is set to a placeholder value. Set a real API key in your environment variables."
             raise ValueError(msg)
         return v.strip()
 
