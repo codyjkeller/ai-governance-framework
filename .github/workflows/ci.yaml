@@ -28,7 +28,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install ".[dev]"
 
       - name: Ruff lint
         run: ruff check src/ tests/
@@ -92,7 +92,7 @@ jobs:
           path: bandit-report.json
 
       - name: pip-audit dependency check
-        run: pip-audit --strict --desc --skip-editable
+        run: pip-audit --strict --desc
 
   container:
     name: Container Build & Scan
