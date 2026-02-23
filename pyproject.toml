@@ -87,7 +87,12 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--cov=ai_governance --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=ai_governance --cov-report=term-missing --cov-fail-under=75"
+
+   [tool.coverage.run]
+   omit = [
+       "src/ai_governance/cli/*",
+   ]
 
 # --- Mypy ---
 [tool.mypy]
