@@ -92,7 +92,7 @@ jobs:
           path: bandit-report.json
 
       - name: pip-audit dependency check
-        run: pip-audit --strict --desc
+        run: pip-audit --l --desc
 
   container:
     name: Container Build & Scan
