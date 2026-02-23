@@ -1,0 +1,58 @@
+# =============================================================================
+# Docker Compose for AI Governance Proxy
+# =============================================================================
+#
+# Usage:
+#   # Set required environment variables first:
+#   export LLM_API_KEY="sk-your-real-key"
+#   export PROXY_API_KEYS="key1,key2"  # Keys that clients use to auth to this proxy
+#
+#   # Start:
+#   docker compose up -d
+#
+#   # View logs:
+#   docker compose logs -f governance-proxy
+#
+#   # Stop:
+#   docker compose down
+# =============================================================================
+
+services:
+  governance-proxy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:?Set LLM_API_KEY in your environment}
+      - LLM_API_URL=${LLM_API_URL:-https://api.openai.com/v1/chat/completions}
+      - JIRA_WEBHOOK=${JIRA_WEBHOOK:-}
+      - PROXY_API_KEYS=${PROXY_API_KEYS:-}
+      - ENFORCEMENT_MODE=${ENFORCEMENT_MODE:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RATE_LIMIT=${RATE_LIMIT:-60}
+    volumes:
+      # Persist audit logs outside the container
+      - audit-logs:/app/audit_logs
+      # Mount policy file so it can be updated without rebuilding
+      - ../policies:/app/policies:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 128M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  audit-logs:
+    driver: local

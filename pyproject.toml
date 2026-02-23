@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "ai-governance-framework"
+version = "3.0.0"
+description = "Policy-as-Code governance proxy for Enterprise Generative AI (LLMs) in regulated environments."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Cody Keller"},
+]
+keywords = ["ai", "governance", "dlp", "llm", "proxy", "hipaa", "cjis", "compliance"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+
+dependencies = [
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.32.0,<1.0.0",
+    "pydantic>=2.10.0,<3.0.0",
+    "pydantic-settings>=2.7.0,<3.0.0",
+    "httpx>=0.28.0,<1.0.0",
+    "pyyaml>=6.0.2,<7.0.0",
+    "slowapi>=0.1.9,<1.0.0",
+    "structlog>=24.4.0,<25.0.0",
+]
+
+[project.optional-dependencies]
+cli = [
+    "rich>=13.9.0,<14.0.0",
+]
+dev = [
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "pytest-asyncio>=0.25.0,<1.0.0",
+    "httpx>=0.28.0,<1.0.0",
+    "ruff>=0.8.0,<1.0.0",
+    "mypy>=1.13.0,<2.0.0",
+    "bandit>=1.8.0,<2.0.0",
+    "pip-audit>=2.7.0,<3.0.0",
+    "pre-commit>=4.0.0,<5.0.0",
+    "rich>=13.9.0,<14.0.0",
+]
+
+[project.scripts]
+ai-gov-server = "ai_governance.server:main"
+ai-gov-demo = "ai_governance.cli.demo:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# --- Ruff (Linter + Formatter) ---
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "S",   # bandit (security)
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific
+]
+ignore = [
+    "S101", # allow assert in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=ai_governance --cov-report=term-missing --cov-fail-under=80"
+
+# --- Mypy ---
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false

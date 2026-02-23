@@ -1,18 +1,38 @@
-# Enterprise AI Acceptable Use Policy (AUP)
-# This file controls the behavior of the Governance Proxy.
+# =============================================================================
+# Enterprise AI Acceptable Use Policy (AUP) - v3.0
+# =============================================================================
+#
+# This file controls the behavior of the AI Governance Proxy.
+# It is the single source of truth for DLP rules, model restrictions,
+# and enforcement behavior.
+#
+# Changes to this file take effect on server restart. Hot-reload
+# is planned for a future release.
+#
+# sensitivity: LOW | MEDIUM | HIGH | CRITICAL
+# action:      ALLOW | REDACT | BLOCK
+# =============================================================================
 
 global_settings:
-  policy_version: "2.1"
-  enforcement_mode: "blocking"  # Options: blocking, monitoring
+  policy_version: "3.0"
+  # enforcement_mode controls how the proxy handles violations:
+  #   blocking   - actively block/redact requests (production)
+  #   monitoring - log violations but allow all traffic through (rollout/testing)
+  enforcement_mode: "blocking"
+
+  # Glob patterns for approved model families.
+  # Empty list = all models allowed.
+  # Requests for models not matching any pattern are denied.
   allowed_model_families:
     - "gpt-4*"
+    - "gpt-4o*"
     - "claude-3*"
-    - "gemini-pro"
+    - "claude-sonnet*"
+    - "claude-opus*"
+    - "gemini-pro*"
 
 # --- DATA LOSS PREVENTION (DLP) RULES ---
-# sensitivity: LOW, MEDIUM, HIGH, CRITICAL
-# action: ALLOW, REDACT, BLOCK
-
+# Each key must match a pattern name (lowercase) from the scanning/patterns.py registry.
 data_rules:
   # Identity (PII)
   ssn:
@@ -26,7 +46,7 @@ data_rules:
     action: "REDACT"
   us_zip_code:
     sensitivity: "LOW"
-    action: "ALLOW"
+    action: "ALLOW"   # High false-positive rate. Only redact if context-aware scanning is added.
 
   # Financial & Assets
   credit_card:
@@ -57,3 +77,12 @@ data_rules:
   dea_number:
     sensitivity: "HIGH"
     action: "REDACT"
+
+# --- GUARDRAILS ---
+# Configuration for output-side safety checks.
+guardrails:
+  hallucination_check:
+    # Confidence threshold for response quality.
+    # Requires an external confidence scorer to be wired in.
+    # Currently a placeholder — no scorer is integrated yet.
+    threshold: 0.85

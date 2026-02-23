@@ -1,0 +1,42 @@
+# Version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.py[codz]
+*.egg-info
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+.mypy_cache/
+
+# Documentation and non-runtime files
+*.md
+LICENSE
+docs/
+diagrams/
+
+# Audit logs (mounted as volume, not baked into image)
+audit_logs/
+
+# Local env files
+.env
+.envrc
+
+# macOS
+.DS_Store
