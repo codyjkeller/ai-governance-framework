@@ -17,14 +17,14 @@ If you discover a security vulnerability in this project, please report it respo
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **codyjkeller@proton.me** with:
+Instead, please open a **private security advisory** via GitHub's [Security Advisories](https://github.com/codyjkeller/ai-governance-framework/security/advisories) feature with:
 
 1. A description of the vulnerability
 2. Steps to reproduce the issue
 3. The potential impact
 4. Any suggested fixes (optional)
 
-You should receive an acknowledgment within **7 days**. Remediation timelines will depend on severity and my availability — this project is maintained in my personal time. Critical issues will be prioritized, but there is no SLA.
+I will handle any reported issues when I can. There is no SLA or guaranteed response time.
 
 ## Security Considerations
 
