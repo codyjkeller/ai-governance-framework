@@ -13,7 +13,7 @@
 
 As enterprises adopt Generative AI, they face the risk of **Data Leakage** (sending PII/secrets to LLM providers) and **Shadow AI** (using unapproved models).
 
-This framework acts as a **Governance Proxy** — a FastAPI middleware layer that sits between your users and the LLM APIs. It inspects every prompt in real-time to sanitize sensitive data before it leaves your network, enforces model allowlisting, and maintains a tamper-evident audit trail for GRC compliance.
+This framework acts as a **Governance Proxy** a FastAPI middleware layer that sits between your users and the LLM APIs. It inspects every prompt in real-time to sanitize sensitive data before it leaves your network, enforces model allowlisting, and maintains a tamper-evident audit trail for GRC compliance.
 
 ## Features
 
