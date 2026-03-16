@@ -4,8 +4,12 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 3.x     | Yes                |
+| 3.x     | Yes (best effort)  |
 | < 3.0   | No                 |
+
+## Important Context
+
+This is a **personal portfolio project** maintained by a single developer. It is not actively monitored or staffed for rapid incident response. Vulnerability reports are appreciated but will be addressed on a best-effort basis as time permits.
 
 ## Reporting a Vulnerability
 
@@ -13,14 +17,14 @@ If you discover a security vulnerability in this project, please report it respo
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **[security contact - update this]** with:
+Instead, please email **codyjkeller@proton.me** with:
 
 1. A description of the vulnerability
 2. Steps to reproduce the issue
 3. The potential impact
 4. Any suggested fixes (optional)
 
-You should receive an acknowledgment within **48 hours** and a detailed response within **5 business days** indicating the next steps.
+You should receive an acknowledgment within **7 days**. Remediation timelines will depend on severity and my availability — this project is maintained in my personal time. Critical issues will be prioritized, but there is no SLA.
 
 ## Security Considerations
 
@@ -29,7 +33,7 @@ This framework is a governance proxy that processes potentially sensitive data (
 - **Regex-based detection has known limitations.** It will miss encoded, obfuscated, or context-dependent sensitive data. See `src/ai_governance/scanning/patterns.py` for documented false-positive and false-negative notes per pattern.
 - **Audit logs contain metadata but not the full prompt/response by default.** Matched values are partially masked in logs.
 - **This tool does not guarantee regulatory compliance.** It is one layer in a defense-in-depth strategy. Consult your compliance team before deploying in HIPAA, CJIS, or other regulated environments.
-- **TLS termination is your responsibility.** The proxy runs on plaintext HTTP. Deploy behind a reverse proxy (nginx, Traefin, Envoy) with TLS in production.
+- **TLS termination is your responsibility.** The proxy runs on plaintext HTTP. Deploy behind a reverse proxy (nginx, Traefik, Envoy) with TLS in production.
 
 ## Dependency Security
 
