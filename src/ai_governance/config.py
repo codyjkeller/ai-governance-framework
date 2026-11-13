@@ -32,6 +32,9 @@ class Settings(BaseSettings):
             audit log records who made each request.
         ALLOW_INSECURE_DEV: Set to true to run without the safety checks that
             stop a misconfigured proxy from starting. Local demos only.
+        AUDIT_HMAC_KEY: Secret used to sign every audit entry (32+ characters).
+        AUDIT_ANCHOR_URL: HTTPS endpoint that receives a copy of the audit
+            log's head record after every write.
     """
 
     model_config = {"env_prefix": "", "case_sensitive": False}
@@ -88,6 +91,18 @@ class Settings(BaseSettings):
         "Each entry is either 'name:key' or just 'key'.",
     )
 
+    # --- Audit integrity ---
+    audit_hmac_key: str = Field(
+        default="",
+        description="Secret used to sign audit entries so they cannot be forged or rewritten. "
+        "At least 32 characters. Keep it in your secrets manager, never beside the log.",
+    )
+    audit_anchor_url: str = Field(
+        default="",
+        description="HTTPS endpoint that receives the audit log's head record after every write. "
+        "A copy stored off this machine is what proves later that entries were removed.",
+    )
+
     # --- Safety override ---
     allow_insecure_dev: bool = Field(
         default=False,
@@ -129,6 +144,25 @@ class Settings(BaseSettings):
         """Accept comma-separated string from env var or list from code."""
         if isinstance(v, str):
             return [k.strip() for k in v.split(",") if k.strip()]
+        return v
+
+    @field_validator("audit_hmac_key")
+    @classmethod
+    def validate_audit_hmac_key(cls, v: str) -> str:
+        """A short signing key can be guessed, which defeats the signatures."""
+        if v and len(v) < 32:
+            msg = "AUDIT_HMAC_KEY must be at least 32 characters."
+            raise ValueError(msg)
+        return v
+
+    @field_validator("audit_anchor_url")
+    @classmethod
+    def validate_audit_anchor_url(cls, v: str) -> str:
+        """The head record must not travel in clear text."""
+        local = ("http://127.0.0.1", "http://localhost")
+        if v and not v.startswith("https://") and not v.startswith(local):
+            msg = "AUDIT_ANCHOR_URL must start with https://"
+            raise ValueError(msg)
         return v
 
     def api_key_identities(self) -> dict[str, str]:

@@ -19,11 +19,13 @@ from ai_governance.server import ConfigurationError, create_app
 
 POLICY = Path(__file__).parent.parent / "policies" / "generative_ai_aup.yaml"
 HEADERS = {"X-Governance-API-Key": "key-for-billing"}
+SIGNING_KEY = "test-signing-key-not-a-real-secret-000000"
 
 
 def make_settings(tmp_path, **overrides):
     values = {
         "llm_api_key": "sk-test-not-a-real-key-for-unit-tests-only",
+        "audit_hmac_key": SIGNING_KEY,
         "policy_path": POLICY,
         "audit_log_path": tmp_path / "audit.jsonl",
         "rate_limit": 0,
