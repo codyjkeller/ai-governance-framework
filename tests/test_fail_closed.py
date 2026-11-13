@@ -41,7 +41,9 @@ def make_client(tmp_path, **overrides):
 
 
 def chat(client, messages, headers=HEADERS, **extra):
-    return client.post("/v1/chat/completions", json={"model": "gpt-6-sol", "messages": messages, **extra}, headers=headers)
+    return client.post(
+        "/v1/chat/completions", json={"model": "gpt-6-sol", "messages": messages, **extra}, headers=headers
+    )
 
 
 def audit_entries(tmp_path):
