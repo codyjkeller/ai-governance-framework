@@ -1,0 +1,63 @@
+# =============================================================================
+# AI USE CASE INVENTORY
+# =============================================================================
+# One entry for every way the organization uses AI, including AI features
+# inside tools bought from vendors.
+#
+# The three entries below are made-up examples. Replace them with your own.
+#
+# Check this file with:   ai-gov-inventory
+# How to fill it in:      governance/README.md
+# How tiers are decided:  governance/risk_tiering.md
+# =============================================================================
+
+use_cases:
+  - id: "AI-001"
+    name: "Internal knowledge assistant"
+    owner: "IT Service Desk Manager"
+    business_purpose: "Staff ask questions about internal how-to articles."
+    status: "in_production"       # proposed | approved | in_production | retired
+    provider: "OpenAI"
+    models: ["gpt-6-luna"]
+    via_proxy: true               # true if requests go through the governance proxy
+    data_classes: ["internal"]    # public | internal | confidential | pii | phi | cji
+    affects_individuals: false    # true if output informs a decision about a person
+    autonomy: "assistive"         # assistive | human_approves | autonomous
+    audience: "internal"          # internal | external
+    risk_tier: 3                  # 1 = high, 2 = moderate, 3 = low
+    approved_by: "CISO"
+    approved_on: 2026-10-01
+    next_review: 2027-10-01
+
+  - id: "AI-002"
+    name: "Customer support reply drafting"
+    owner: "Director of Customer Support"
+    business_purpose: "Drafts replies to support tickets. An agent edits and sends each one."
+    status: "in_production"
+    provider: "Anthropic"
+    models: ["claude-sonnet-5-5"]
+    via_proxy: true
+    data_classes: ["confidential", "pii"]
+    affects_individuals: false
+    autonomy: "human_approves"
+    audience: "external"
+    risk_tier: 2
+    human_oversight: "A support agent reviews and sends every reply."
+    approved_by: "CISO"
+    approved_on: 2026-10-15
+    next_review: 2027-10-15
+
+  - id: "AI-003"
+    name: "Case report summarization"
+    owner: "Product Manager, Case Management"
+    business_purpose: "Summarizes case narratives for investigators."
+    status: "proposed"
+    provider: "Anthropic"
+    models: ["claude-opus-5-5"]
+    via_proxy: true
+    data_classes: ["cji", "pii"]
+    affects_individuals: true
+    autonomy: "assistive"
+    audience: "external"
+    risk_tier: 1
+    human_oversight: "An investigator reads the source report before relying on any summary."

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HIPAA and CJIS identifiers:** medical record numbers, dates of birth, FBI numbers, state ID numbers and driver's license numbers, each matched when labelled. SSNs without dashes are caught when labelled, and American Express card numbers are covered.
 - **Response rules.** Replies are checked against every pattern, and a new `output_rules` policy section sets the action per pattern. Replies can now be redacted as well as blocked.
 - `HOST`, `PORT` and `WORKERS` settings. The Docker image now starts through `ai-gov-server`, so all settings come from the environment.
+- **AI inventory and risk tiering.** A new `governance/` folder holds an inventory of AI use cases, a three-tier risk procedure mapped to the NIST AI RMF, and an intake form. `ai-gov-inventory` checks the inventory and runs in CI.
 
 ### Security
 - **Every message is scanned.** Previously only the last message was checked, so sensitive data in an earlier turn or in the system prompt was forwarded upstream untouched.

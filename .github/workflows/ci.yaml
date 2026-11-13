@@ -39,6 +39,12 @@ jobs:
       - name: Mypy type check
         run: mypy src/ai_governance/
 
+      # The shipped inventory holds example entries with fixed dates, so overdue
+      # reviews are reported but do not fail the build. Remove --allow-overdue
+      # once the inventory holds your own use cases.
+      - name: Check AI use case inventory
+        run: ai-gov-inventory --allow-overdue
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

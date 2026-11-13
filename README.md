@@ -184,14 +184,26 @@ ai-governance-framework/
 │   ├── audit/logger.py       # Hash-chained, signed audit logger
 │   ├── audit/anchor.py       # Copies the log's state to another system
 │   ├── integrations/         # Jira, LLM client
+│   ├── inventory.py          # Checks the AI use case inventory
 │   └── cli/demo.py           # Rich CLI demo (optional)
 ├── tests/                    # Test suite
 ├── policies/                 # YAML policy files
+├── governance/               # AI inventory, risk tiering procedure, intake form
 ├── docker/                   # Dockerfile + docker-compose
 ├── .github/workflows/        # CI pipeline
 ├── pyproject.toml            # Package config + all tool settings
 └── Makefile                  # Dev shortcuts
 ```
+
+## AI Inventory and Risk Tiering
+
+The proxy controls data. The `governance/` folder covers the other half: which AI uses exist, who owns each one, and how risky it is. It holds an inventory file, a three-tier risk procedure mapped to the NIST AI RMF, and an intake form for new use cases.
+
+```bash
+ai-gov-inventory
+```
+
+The command checks that every entry is complete, that no use case is rated lower than its data requires, and that reviews are not overdue. Start with [governance/README.md](governance/README.md).
 
 ## Development
 

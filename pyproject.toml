@@ -54,6 +54,7 @@ dev = [
 [project.scripts]
 ai-gov-server = "ai_governance.server:main"
 ai-gov-demo = "ai_governance.cli.demo:main"
+ai-gov-inventory = "ai_governance.inventory:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
