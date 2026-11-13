@@ -245,12 +245,77 @@ class TestContentThatCannotBeScanned:
             load_policy(path, strict=True)
 
 
+def events(response):
+    """The JSON bodies of a server-sent event stream, and whether it ended with [DONE]."""
+    lines = [line[len("data: ") :] for line in response.text.splitlines() if line.startswith("data: ")]
+    return [json.loads(line) for line in lines if line != "[DONE]"], lines[-1] == "[DONE]"
+
+
 class TestStreaming:
-    def test_streaming_is_refused_with_a_clear_message(self, tmp_path, upstream):
+    def test_reply_is_sent_as_a_stream(self, tmp_path, upstream):
         response = chat(make_client(tmp_path), [USER], stream=True)
-        assert response.status_code == 400
-        assert "Streaming is not supported" in response.json()["detail"]
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        chunks, done = events(response)
+        assert done
+        assert all(chunk["object"] == "chat.completion.chunk" for chunk in chunks)
+        assert chunks[0]["choices"][0]["delta"] == {"role": "assistant", "content": "The answer is 4."}
+        assert chunks[-1]["choices"][0]["delta"] == {}
+
+    def test_the_provider_is_asked_for_the_whole_reply(self, tmp_path, upstream):
+        chat(make_client(tmp_path), [USER], stream=True, stream_options={"include_usage": True})
+        assert upstream.payloads[0] == {"model": "gpt-6-sol", "messages": [USER]}
+
+    def test_leaking_reply_is_suppressed_before_anything_is_sent(self, tmp_path, upstream):
+        upstream.reply = "The SSN on file is 123-45-6789."
+        response = chat(make_client(tmp_path), [USER], stream=True)
+        assert response.status_code == 502
+        assert "123-45-6789" not in response.text
+
+    def test_blocked_prompt_is_refused_as_usual(self, tmp_path, upstream):
+        response = chat(make_client(tmp_path), [{"role": "user", "content": "My SSN is 123-45-6789"}], stream=True)
+        assert response.status_code == 403
         assert upstream.payloads == []
+
+    def test_redaction_applies_to_the_stream(self, tmp_path, upstream):
+        policy = tmp_path / "policy.yaml"
+        policy.write_text(
+            POLICY.read_text().replace("\noutput_rules:\n", "\noutput_rules:\n  email:\n    action: REDACT\n")
+        )
+        upstream.reply = "Write to help@example.org."
+        chunks, _ = events(chat(make_client(tmp_path, policy_path=policy), [USER], stream=True))
+        assert chunks[0]["choices"][0]["delta"]["content"] == "Write to [EMAIL_REDACTED]."
+
+    def test_tool_calls_usage_and_finish_reason_are_carried(self, tmp_path, upstream, monkeypatch):
+        from ai_governance import server
+
+        body = {
+            "id": "chatcmpl-1",
+            "created": 1,
+            "model": "gpt-6-sol",
+            "choices": [{"index": 0, "message": TOOL_CALL, "finish_reason": "tool_calls"}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 7, "total_tokens": 12},
+        }
+
+        async def reply(url, api_key, request_payload, timeout=60.0):
+            return body
+
+        monkeypatch.setattr(server, "call_upstream_llm", reply)
+        client = make_client(tmp_path)
+        chunks, done = events(chat(client, [USER], stream=True, stream_options={"include_usage": True}))
+        assert done
+        assert chunks[0]["id"] == "chatcmpl-1"
+        call = chunks[0]["choices"][0]["delta"]["tool_calls"][0]
+        assert call["index"] == 0
+        assert call["function"]["name"] == "get_weather"
+        assert chunks[1]["choices"][0]["finish_reason"] == "tool_calls"
+        assert chunks[2] == {**chunks[2], "choices": [], "usage": body["usage"]}
+        chunks, _ = events(chat(client, [USER], stream=True))
+        assert all("usage" not in chunk for chunk in chunks)
+
+    def test_the_stream_is_audited_like_any_reply(self, tmp_path, upstream):
+        chat(make_client(tmp_path), [USER], stream=True)
+        assert audit_entries(tmp_path)[-1]["event_type"] == "TRANSACTION_COMPLETE"
 
     def test_stream_false_is_fine(self, tmp_path):
         assert chat(make_client(tmp_path), [USER], stream=False).status_code == 200

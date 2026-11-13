@@ -222,7 +222,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 - **No log retention or rotation.** The proxy appends to one file. Archive and expire it to match your retention policy.
 - **The `user_id` field in a request is not verified.** The audit log records the owner of the API key as `user_id` and stores the caller-supplied value separately as `client_user_id`.
 - **Rate limits are per worker.** With four workers, a key can make up to four times `RATE_LIMIT` requests per minute. Use a shared store or your gateway's rate limiting if you need an exact limit.
-- **Streaming is not supported.** A request with `stream: true` is refused, because a streamed reply would reach the caller before it could be scanned as a whole.
+- **Streamed replies arrive all at once.** A request with `stream: true` is answered in streaming format, but only after the proxy has received and scanned the whole reply. Text does not appear word by word, and a long reply can take a while before anything shows. Raise client timeouts if needed.
 - **Images, audio and files are refused by default.** Pattern matching cannot read them, so a photo of an ID card would pass straight through. Set `allow_non_text_content: true` in the policy to allow them unscanned.
 - **Single upstream provider format.** Currently supports OpenAI-compatible APIs. Azure OpenAI and other providers require URL/auth format changes.
 
