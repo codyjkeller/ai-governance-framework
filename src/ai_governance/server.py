@@ -377,17 +377,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Data leakage detected in LLM response",
             )
             if not is_monitoring:
-                raise HTTPException(
+                # Returned, not raised, so the Jira alert queued above is sent.
+                return JSONResponse(
                     status_code=502,
-                    detail="Response suppressed due to Data Leakage Policy.",
+                    content={"detail": "Response suppressed due to Data Leakage Policy."},
+                    background=background_tasks,
                 )
+        elif output_result.status == "REDACTED":
+            audit("OUTPUT_SCAN", "REDACTED", [v["type"] for v in output_result.violations])
 
         # --- Success ---
         audit("TRANSACTION_COMPLETE", "SUCCESS", "Request fulfilled")
 
         # A blocked response never reaches this point in blocking mode. In
-        # monitoring mode the response is returned exactly as the model sent it.
-        return upstream_response
+        # monitoring mode the response is returned exactly as the model sent it;
+        # otherwise any redactions the policy asked for have been applied.
+        if is_monitoring:
+            return upstream_response
+        result_payload: dict[str, Any] = output_result.payload
+        return result_payload
 
     return app
 

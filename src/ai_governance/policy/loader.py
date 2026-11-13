@@ -109,7 +109,7 @@ def _load_policy_strict(policy_path: Path) -> dict[str, Any]:
 def find_policy_problems(policy: dict[str, Any]) -> list[str]:
     """Return a description of every invalid value in the policy (empty list = valid)."""
     # Imported here: the pattern registry is only needed for validation.
-    from ai_governance.scanning.patterns import INPUT_PATTERNS
+    from ai_governance.scanning.patterns import INPUT_PATTERNS, OUTPUT_ONLY_PATTERNS
 
     problems: list[str] = []
 
@@ -144,6 +144,18 @@ def find_policy_problems(policy: dict[str, Any]) -> list[str]:
             problems.append(
                 f"data_rules.{rule_name}.sensitivity is '{sensitivity}'. Valid: {sorted(VALID_SENSITIVITIES)}"
             )
+
+    output_rules = policy.get("output_rules", {})
+    if not isinstance(output_rules, dict):
+        return [*problems, "output_rules must be a mapping."]
+    for rule_name, rule_config in output_rules.items():
+        key = str(rule_name).lower()
+        if key not in INPUT_PATTERNS and key not in OUTPUT_ONLY_PATTERNS:
+            problems.append(f"output_rules.{rule_name}: no detection pattern has this name.")
+            continue
+        action = rule_config.get("action", "") if isinstance(rule_config, dict) else ""
+        if action not in VALID_ACTIONS:
+            problems.append(f"output_rules.{rule_name}.action is '{action}'. Valid: {sorted(VALID_ACTIONS)}")
     return problems
 
 

@@ -123,7 +123,7 @@ class TestICD10Detection:
 
 class TestDEANumberDetection:
     def test_redacts_dea_number(self, input_scanner):
-        result = input_scanner.scan("DEA: AB1234567")
+        result = input_scanner.scan("DEA: AB1234563")
         assert any(v["type"] == "DEA_NUMBER" for v in result.violations)
 
 

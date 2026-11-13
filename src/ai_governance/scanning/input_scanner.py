@@ -14,7 +14,7 @@ from typing import Any
 from ai_governance.models import ScanResult
 from ai_governance.policy.loader import get_data_rule
 from ai_governance.scanning.base import BaseScanner
-from ai_governance.scanning.patterns import INPUT_PATTERNS
+from ai_governance.scanning.patterns import INPUT_PATTERNS, find_matches
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +53,12 @@ class InputScanner(BaseScanner):
             action = rule.get("action", "REDACT")
             sensitivity = rule.get("sensitivity", "HIGH")
 
-            matches = pattern_def.regex.findall(text)
-            if not matches:
+            # Distinct values that match the pattern and pass its check-digit test, if it has one
+            unique_matches = find_matches(pattern_def, text)
+            if not unique_matches:
                 continue
 
-            # Deduplicate matches
-            unique_matches = list(set(matches))
-
             for match_value in unique_matches:
-                # If findall returns tuples (from capture groups), take the full match
-                if isinstance(match_value, tuple):
-                    match_value = match_value[0]
-
                 violation = {
                     "type": pattern_def.name,
                     "sensitivity": sensitivity,

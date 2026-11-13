@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Signed audit log.** With `AUDIT_HMAC_KEY` (required) every entry and the head record carry an HMAC-SHA-256 signature, so the log cannot be rewritten by someone who can only write files.
 - **Audit anchoring.** `AUDIT_ANCHOR_URL` receives the head record after every write. `/admin/audit/verify?anchor_entries=&anchor_hash=` checks any stored anchor against the log, which proves whether entries were removed or an older log was put back.
 - **Control mapping** for NIST SP 800-53 Rev. 5, SOC 2, HIPAA, CJIS v6.1 and GovRAMP in `docs/COMPLIANCE_MAPPING.md`.
+- **More secrets are caught:** GitHub, Slack, Google, Stripe and OpenAI/Anthropic-style keys, JWTs, bearer tokens, and private keys with the plain `BEGIN PRIVATE KEY` header.
+- **HIPAA and CJIS identifiers:** medical record numbers, dates of birth, FBI numbers, state ID numbers and driver's license numbers, each matched when labelled. SSNs without dashes are caught when labelled, and American Express card numbers are covered.
+- **Response rules.** Replies are checked against every pattern, and a new `output_rules` policy section sets the action per pattern. Replies can now be redacted as well as blocked.
 - `HOST`, `PORT` and `WORKERS` settings. The Docker image now starts through `ai-gov-server`, so all settings come from the environment.
 
 ### Security
@@ -25,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API keys are compared in constant time.**
 
 ### Fixed
+- **Fewer false alarms.** "vitamin B12" and "room A10" are no longer redacted as diagnosis codes. Card numbers must pass the Luhn check and DEA numbers their check digit, so ordinary 16-digit numbers are left alone. SSN ranges that are never issued are skipped.
+- **Jira alerts for suppressed replies were never sent**, for the same reason as blocked requests.
+- **The CI security checks could not fail.** Bandit ran with `|| true` and the container scan with exit code 0. Both now fail the build. The Trivy action is pinned to a commit instead of `master`.
+- **`.secrets.baseline` was missing**, so the detect-secrets pre-commit hook could not run.
+- **The architecture diagram** showed layers that do not exist. It now shows what the code does.
 - **A reply containing only a tool call crashed the proxy** (HTTP 500).
 - **The proxy added `temperature: 0.7` to every request.** It is now forwarded only when the caller sets it.
 - **Streaming requests are refused with a clear message** instead of being silently turned into non-streaming ones.
@@ -43,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrade notes
 - Set `PROXY_API_KEYS`, `AUDIT_HMAC_KEY`, and either the TLS files or `TLS_TERMINATED_UPSTREAM=true` before upgrading, or the proxy will not start.
+- Add a `data_rules` entry for each new pattern if you maintain your own policy file. A pattern with no rule is redacted.
+- Violation names in replies now follow the pattern name: `LEAKED_API_KEY` is `LEAKED_API_KEY_GENERIC` and `LEAKED_AWS_KEY` is `LEAKED_AWS_ACCESS_KEY`. Update any alert rules that match on them.
 - An audit log written by 3.0.0 has no head record. `/admin/audit/verify` reports it as invalid until the proxy writes its next entry, which creates the record.
 
 ## [3.0.0] - 2026-02-20
