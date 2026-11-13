@@ -10,7 +10,7 @@ class TestLeakedAPIKeyDetection:
         response = "Here is the key: api_key=abcdefghijklmnopqrstuvwxyz"
         result = output_scanner.scan(response)
         assert result.status == "BLOCKED"
-        assert any(v["type"] == "LEAKED_API_KEY" for v in result.violations)
+        assert any(v["type"] == "LEAKED_API_KEY_GENERIC" for v in result.violations)
 
     def test_blocks_leaked_secret(self, output_scanner):
         response = "The secret: secret=my_super_secret_value_12345"
@@ -31,7 +31,7 @@ class TestLeakedAWSKeyDetection:
         response = "The AWS key is AKIAIOSFODNN7EXAMPLE"
         result = output_scanner.scan(response)
         assert result.status == "BLOCKED"
-        assert any(v["type"] == "LEAKED_AWS_KEY" for v in result.violations)
+        assert any(v["type"] == "LEAKED_AWS_ACCESS_KEY" for v in result.violations)
 
 
 class TestSuspiciousURLDetection:

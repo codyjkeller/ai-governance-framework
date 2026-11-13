@@ -87,9 +87,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Bandit SAST scan
-        run: bandit -r src/ai_governance/ -c pyproject.toml -f json -o bandit-report.json || true
+        run: bandit -r src/ai_governance/ -c pyproject.toml -f json -o bandit-report.json
 
       - name: Upload Bandit report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bandit-report
@@ -109,9 +110,11 @@ jobs:
         run: docker build -f docker/Dockerfile -t ai-governance:ci .
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        # Pinned to the commit behind v0.36.0. Tags and branches of an action can be moved; a commit cannot.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: "ai-governance:ci"
           format: "table"
-          exit-code: "0"
+          exit-code: "1"
+          ignore-unfixed: true
           severity: "CRITICAL,HIGH"

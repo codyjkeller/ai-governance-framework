@@ -20,6 +20,11 @@ RUN pip install --no-cache-dir --prefix=/install .
 # --- Stage 2: Production ---
 FROM python:3.11-slim
 
+# Apply operating system security updates released since the base image was built,
+# and remove the Python packaging tools, which the proxy does not use at run time.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
+    pip uninstall -y setuptools wheel
+
 # Create a non-root user (CIS Docker Benchmark requirement)
 RUN groupadd --gid 1001 appuser && \
     useradd --uid 1001 --gid appuser --shell /bin/false appuser

@@ -27,6 +27,7 @@ global_settings:
   # Glob patterns for approved model families.
   # Empty list = all models allowed.
   # Requests for models not matching any pattern are denied.
+  # Review this list regularly. Model names change often.
   allowed_model_families:
     - "gpt-4*"
     - "gpt-4o*"
@@ -40,6 +41,9 @@ global_settings:
 data_rules:
   # Identity (PII)
   ssn:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  ssn_unformatted:    # 123456789 or 123 45 6789, when labelled "SSN" or "Social Security"
     sensitivity: "CRITICAL"
     action: "BLOCK"
   email:
@@ -70,6 +74,27 @@ data_rules:
   api_key_generic:
     sensitivity: "HIGH"
     action: "BLOCK"
+  github_token:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  llm_api_key:        # OpenAI- and Anthropic-style keys (sk-...)
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  slack_token:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  google_api_key:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  stripe_key:
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  jwt:
+    sensitivity: "HIGH"
+    action: "BLOCK"
+  bearer_token:
+    sensitivity: "HIGH"
+    action: "BLOCK"
   ip_address:
     sensitivity: "MEDIUM"
     action: "REDACT"
@@ -81,6 +106,35 @@ data_rules:
   dea_number:
     sensitivity: "HIGH"
     action: "REDACT"
+  medical_record_number:   # when labelled "MRN" or "medical record number"
+    sensitivity: "HIGH"
+    action: "REDACT"
+  date_of_birth:           # when labelled "DOB", "date of birth" or "born"
+    sensitivity: "HIGH"
+    action: "REDACT"
+
+  # Criminal justice (CJIS). These are matched only when labelled.
+  fbi_number:              # FBI Number / Universal Control Number
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  state_id_number:         # State identification number (SID)
+    sensitivity: "CRITICAL"
+    action: "BLOCK"
+  drivers_license:
+    sensitivity: "HIGH"
+    action: "REDACT"
+
+# --- RESPONSE RULES ---
+# What to do when a pattern appears in the model's reply.
+# A pattern not listed here is blocked in replies if it is blocked in prompts
+# above, and otherwise allowed. Models often write example e-mail and IP
+# addresses, so redact-level data is left alone in replies unless listed here.
+output_rules:
+  suspicious_url:          # links to .test, .example, .invalid or .localhost
+    action: "BLOCK"
+  # Example: also redact e-mail addresses in replies
+  # email:
+  #   action: "REDACT"
 
 # --- GUARDRAILS ---
 # Configuration for output-side safety checks.

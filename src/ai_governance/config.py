@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     )
 
     # --- Server ---
-    host: str = Field(default="0.0.0.0", description="Address to listen on.")  # noqa: S104 - container default
+    host: str = Field(default="0.0.0.0", description="Address to listen on.")  # noqa: S104  # nosec B104
     port: int = Field(default=8000, ge=1, le=65535, description="Port to listen on.")
     workers: int = Field(default=1, ge=1, le=64, description="Number of server worker processes.")
 

@@ -1,31 +1,31 @@
 graph TD
-    User[User / Employee] -->|Prompt Input| L1_Input
-    
-    subgraph "Trust Boundary (Internal)"
-        L1_Input[Layer 1: Input Guardrails] -->|Sanitized Prompt| L2_Boundary
-        
-        L2_Boundary[Layer 2: Context Boundary] -->|Token Limit Check| L3_Process
-        
-        subgraph "Layer 3: Process (RAG)"
-            L3_Process -->|Retrieval Request| VectorDB[(Vector DB)]
-            VectorDB -->|Verified Context| L3_Process
-        end
-        
-        L3_Process -->|Enriched Prompt| LLM_API
+    User[User / Application] -->|"POST /v1/chat/completions over HTTPS"| Auth
+
+    subgraph "Governance Proxy"
+        Auth[API key check and rate limit] --> Model[Model allowlist check]
+        Model --> Input["Layer 1: Input scan<br/>every message, tool call and field"]
+        Input -->|Clean or redacted| Forward[Forward to provider]
+        Input -->|Blocked| Reject1[403 returned]
+        Output["Layer 5: Output scan<br/>every choice and tool call"]
+        Output -->|Blocked| Reject2[502 returned]
+        Audit[("Signed, hash-chained audit log")]
     end
-    
+
     subgraph "External Model Provider"
-        LLM_API[LLM Service] -->|Raw Completion| L4_Quality
+        Forward --> LLM[LLM Service]
     end
-    
-    subgraph "Trust Boundary (Internal)"
-        L4_Quality[Layer 4: Quality & Citation] -->|Confidence Score > 85%| L5_Safety
-        L4_Quality -->|Confidence Score < 85%| Reject[Reject Response]
-        
-        L5_Safety[Layer 5: Output Safety Scan] -->|Safe| User
-        L5_Safety -->|Unsafe/Toxic| Block[Block & Audit Log]
-    end
-    
-    style L1_Input fill:#e1f5fe,stroke:#01579b
-    style L3_Process fill:#e8f5e9,stroke:#2e7d32
-    style L5_Safety fill:#ffebee,stroke:#c62828
+
+    LLM -->|Reply| Output
+    Output -->|Clean or redacted| User
+
+    Auth -.-> Audit
+    Model -.-> Audit
+    Input -.-> Audit
+    Output -.-> Audit
+    Audit -.->|Head record after every write| Anchor[("Anchor on another system")]
+    Reject1 -.->|Alert| Jira[Jira]
+    Reject2 -.->|Alert| Jira
+
+    style Input fill:#e1f5fe,stroke:#01579b
+    style Output fill:#ffebee,stroke:#c62828
+    style Audit fill:#e8f5e9,stroke:#2e7d32

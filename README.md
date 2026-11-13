@@ -17,7 +17,7 @@ This framework acts as a **Governance Proxy** a FastAPI middleware layer that si
 
 ## Features
 
-- **Multi-Domain Scanning:** Regex-based detection for PII, Medical Data (HIPAA), and DevOps Secrets (AWS Keys, private keys, API tokens). The whole request is scanned: every message, tool call, tool result and tool definition. So is everything in the model's reply.
+- **Multi-Domain Scanning:** Regex-based detection for PII, Medical Data (HIPAA: diagnosis codes, record numbers, dates of birth), Criminal Justice identifiers (CJIS: FBI and state ID numbers, driver's licenses), and DevOps Secrets (AWS, GitHub, Slack, Google, Stripe and LLM provider keys, private keys, tokens). Card and DEA numbers are verified by their check digit. The whole request is scanned: every message, tool call, tool result and tool definition. So is everything in the model's reply.
 - **Works With Existing OpenAI Clients:** Point the official SDK's `base_url` at the proxy. Tools, `max_tokens`, `response_format` and the rest of the chat format pass through unchanged.
 - **Real-Time API Proxy:** Drop-in replacement for OpenAI's `/v1/chat/completions` endpoint with governance enforcement.
 - **Policy-as-Code:** DLP rules defined in YAML (`policies/generative_ai_aup.yaml`), updatable by GRC teams without code changes.
@@ -30,6 +30,7 @@ This framework acts as a **Governance Proxy** a FastAPI middleware layer that si
 - **Smart Remediation:**
   - **BLOCK:** Stops the request entirely for critical data (SSN, secrets).
   - **REDACT:** Masks lower-risk data (emails, IPs) and forwards the sanitized prompt.
+- **Response Rules:** The model's reply is checked against the same patterns. `output_rules` in the policy sets what is blocked, redacted or allowed in replies. By default a reply is blocked for anything a prompt would be blocked for.
 - **Jira Integration:** Async webhook notifications for policy violations.
 
 ## Quick Start
@@ -138,7 +139,7 @@ User/App ──POST /v1/chat/completions──▶ [Auth + Rate Limit]
                                        │  │  Output Scan │
                                        │  └──┬──────┬───┘
                                        │     │      │
-                                       │  BLOCK   CLEAN
+                                       │  BLOCK  CLEAN/REDACT
                                        │     │      │
                                        └──┬──┘      │
                                           │         │
@@ -215,7 +216,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 
 ## Known Limitations
 
-- **Regex-only detection.** The scanner will miss encoded, obfuscated, or context-dependent sensitive data. See `scanning/patterns.py` for per-pattern false-positive/false-negative documentation. NER model integration (e.g., Presidio) is planned.
+- **Regex-only detection.** The scanner will miss encoded, obfuscated, or context-dependent sensitive data. Record numbers, dates of birth, undashed SSNs and the CJIS identifiers are caught only when a label such as "MRN" or "FBI number" sits next to them. Names and addresses are not detected. See `scanning/patterns.py` for per-pattern false-positive/false-negative documentation. NER model integration (e.g., Presidio) is planned.
 - **Cryptography is not FIPS validated by default.** TLS and audit signatures use the OpenSSL that Python is linked against. For CJIS or GovRAMP, run on a FIPS 140-3 validated OpenSSL or terminate TLS on a validated load balancer. See [docs/COMPLIANCE_MAPPING.md](docs/COMPLIANCE_MAPPING.md).
 - **The audit log is only as safe as its key and its anchor.** Without the signing key nobody can alter or remove entries undetected. Someone who holds the key can, unless `AUDIT_ANCHOR_URL` points at a system they cannot change. Set it in production.
 - **No log retention or rotation.** The proxy appends to one file. Archive and expire it to match your retention policy.
