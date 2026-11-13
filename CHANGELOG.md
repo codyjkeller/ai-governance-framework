@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Importing `ai_governance.server` no longer builds the app** or requires configuration.
 - **Tests no longer call the real OpenAI API.**
 
+### Changed
+- **Test tooling:** pytest 9, to clear a published advisory in pytest 8 that was failing the dependency audit.
+
 ### Upgrade notes
 - Set `PROXY_API_KEYS` before upgrading, or the proxy will not start.
 - An audit log written by 3.0.0 has no head record. `/admin/audit/verify` reports it as invalid until the proxy writes its next entry, which creates the record.

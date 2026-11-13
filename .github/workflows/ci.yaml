@@ -80,7 +80,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          # Newer pip and setuptools first: the versions preinstalled on the
+          # runner have open advisories and would fail the audit below.
+          pip install --upgrade pip setuptools
+          pip install -e ".[dev]"
 
       - name: Bandit SAST scan
         run: bandit -r src/ai_governance/ -c pyproject.toml -f json -o bandit-report.json || true
