@@ -51,7 +51,7 @@ def make_client(tmp_path, policy_path=POLICY, **overrides):
 
 
 def chat(client, messages, **extra):
-    return client.post("/v1/chat/completions", json={"model": "gpt-4", "messages": messages, **extra}, headers=HEADERS)
+    return client.post("/v1/chat/completions", json={"model": "gpt-6-sol", "messages": messages, **extra}, headers=HEADERS)
 
 
 def audit_entries(tmp_path):
@@ -67,7 +67,7 @@ def permissive_policy(tmp_path):
 class TestRequestsPassThroughUnchanged:
     def test_a_clean_request_is_forwarded_exactly_as_sent(self, tmp_path, upstream):
         body = {
-            "model": "gpt-4",
+            "model": "gpt-6-sol",
             "messages": [
                 {"role": "developer", "content": "Be brief."},
                 USER,
@@ -87,7 +87,7 @@ class TestRequestsPassThroughUnchanged:
 
     def test_nothing_is_added_and_user_id_is_removed(self, tmp_path, upstream):
         chat(make_client(tmp_path), [USER], user_id="someone")
-        assert upstream.payloads[0] == {"model": "gpt-4", "messages": [USER]}
+        assert upstream.payloads[0] == {"model": "gpt-6-sol", "messages": [USER]}
 
     def test_temperature_is_forwarded_only_when_sent(self, tmp_path, upstream):
         client = make_client(tmp_path)
@@ -159,7 +159,7 @@ class TestEveryPartOfTheRequestIsScanned:
     def test_blocked_wherever_the_data_is(self, tmp_path, upstream, extra_message_or_field):
         client = make_client(tmp_path)
         response = client.post(
-            "/v1/chat/completions", json={"model": "gpt-4", **extra_message_or_field}, headers=HEADERS
+            "/v1/chat/completions", json={"model": "gpt-6-sol", **extra_message_or_field}, headers=HEADERS
         )
         assert response.status_code == 403
         assert upstream.payloads == []
@@ -266,7 +266,7 @@ class TestResponses:
     def test_tool_call_reply_with_no_text_is_returned(self, tmp_path, upstream, monkeypatch):
         body = {
             "id": "chatcmpl-1",
-            "model": "gpt-4",
+            "model": "gpt-6-sol",
             "choices": [{"index": 0, "finish_reason": "tool_calls", "message": TOOL_CALL}],
         }
         self.respond(upstream, monkeypatch, body)
@@ -314,7 +314,7 @@ class TestResponses:
 class TestPayloadScanner:
     def test_original_request_is_not_modified(self):
         scanner = InputScanner(load_policy(POLICY, strict=True))
-        original = {"model": "gpt-4", "messages": [{"role": "user", "content": "Mail alice@example.com"}]}
+        original = {"model": "gpt-6-sol", "messages": [{"role": "user", "content": "Mail alice@example.com"}]}
         result = scan_request_payload(original, scanner)
         assert result.status == "REDACTED"
         assert original["messages"][0]["content"] == "Mail alice@example.com"

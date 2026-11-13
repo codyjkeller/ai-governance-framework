@@ -23,7 +23,7 @@ class TestAuthentication:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "user", "content": "hello"}],
             },
         )
@@ -33,7 +33,7 @@ class TestAuthentication:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "user", "content": "hello"}],
             },
             headers={"X-Governance-API-Key": "wrong-key"},
@@ -45,7 +45,7 @@ class TestAuthentication:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "user", "content": "What is 2+2?"}],
             },
             headers={"X-Governance-API-Key": "test-key-12345"},
@@ -72,7 +72,7 @@ class TestInputValidation:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [],
             },
             headers={"X-Governance-API-Key": "test-key-12345"},
@@ -83,7 +83,7 @@ class TestInputValidation:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "system", "content": "You are helpful."}],
             },
             headers={"X-Governance-API-Key": "test-key-12345"},
@@ -94,7 +94,7 @@ class TestInputValidation:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "hacker", "content": "hello"}],
             },
             headers={"X-Governance-API-Key": "test-key-12345"},
@@ -107,7 +107,7 @@ class TestInputScanning:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "user", "content": "My SSN is 123-45-6789"}],
             },
             headers={"X-Governance-API-Key": "test-key-12345"},
@@ -119,7 +119,7 @@ class TestInputScanning:
         response = test_client.post(
             "/v1/chat/completions",
             json={
-                "model": "gpt-4",
+                "model": "gpt-6-sol",
                 "messages": [{"role": "user", "content": "Key: AKIAIOSFODNN7EXAMPLE"}],
             },
             headers={"X-Governance-API-Key": "test-key-12345"},

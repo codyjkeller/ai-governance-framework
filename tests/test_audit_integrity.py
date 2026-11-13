@@ -250,7 +250,7 @@ class TestServer:
 
     def test_requests_produce_signed_entries_and_verify(self, tmp_path):
         client = TestClient(create_app(settings=self.settings(tmp_path)))
-        body = {"model": "gpt-4", "messages": [{"role": "user", "content": "hello"}]}
+        body = {"model": "gpt-6-sol", "messages": [{"role": "user", "content": "hello"}]}
         assert client.post("/v1/chat/completions", json=body, headers=HEADERS).status_code == 200
         entries = [json.loads(line) for line in (tmp_path / "audit.jsonl").read_text().splitlines()]
         assert all("mac" in e for e in entries)
@@ -277,7 +277,7 @@ class TestServer:
 
         monkeypatch.setattr(server, "notify_jira", record)
         client = TestClient(create_app(settings=self.settings(tmp_path, jira_webhook="https://jira.example/hook")))
-        body = {"model": "gpt-4", "messages": [{"role": "user", "content": "My SSN is 123-45-6789"}]}
+        body = {"model": "gpt-6-sol", "messages": [{"role": "user", "content": "My SSN is 123-45-6789"}]}
         response = client.post("/v1/chat/completions", json=body, headers=HEADERS)
         assert response.status_code == 403
         assert response.json() == {"detail": "Request blocked by AI Acceptable Use Policy."}

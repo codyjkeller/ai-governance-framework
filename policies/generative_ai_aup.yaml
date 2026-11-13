@@ -28,13 +28,34 @@ global_settings:
   # Empty list = all models allowed.
   # Requests for models not matching any pattern are denied.
   # Review this list regularly. Model names change often.
+  # Last reviewed 2026-11-13 against each provider's published model list.
+  # Limited-access security research models (OpenAI "cyber", Anthropic "mythos")
+  # are left out on purpose. Add them only for an approved use.
   allowed_model_families:
-    - "gpt-4*"
-    - "gpt-4o*"
-    - "claude-3*"
-    - "claude-sonnet*"
+    # OpenAI
+    - "gpt-6.1-sol*"
+    - "gpt-6.1-terra*"
+    - "gpt-6-astra*"
+    - "gpt-6-sol*"
+    - "gpt-6-luna*"
+    - "gpt-5.6-sol*"
+    - "gpt-5.6-terra*"
+    - "gpt-5.6-luna*"
+    - "gpt-5.5"
+    - "gpt-5.5-pro*"
+    - "gpt-5.4"
+    - "gpt-5.4-mini*"
+    - "gpt-5.4-pro*"
+    - "gpt-4o*"         # OpenAI shuts these down 2027-01-14
+    - "gpt-4.1*"        # OpenAI shuts these down 2027-01-14
+    # Anthropic
+    - "claude-fable*"
     - "claude-opus*"
-    - "gemini-pro*"
+    - "claude-sonnet*"
+    - "claude-haiku*"
+    # Google
+    - "gemini-4*"
+    - "gemini-3*"
 
 # --- DATA LOSS PREVENTION (DLP) RULES ---
 # Each key must match a pattern name (lowercase) from the scanning/patterns.py registry.

@@ -208,7 +208,7 @@ def make_client(tmp_path, policy_path):
 
 
 def ask(client):
-    body = {"model": "gpt-4", "messages": [{"role": "user", "content": "Who do I contact?"}]}
+    body = {"model": "gpt-6-sol", "messages": [{"role": "user", "content": "Who do I contact?"}]}
     return client.post("/v1/chat/completions", json=body, headers=HEADERS)
 
 
