@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Full OpenAI chat format.** Every field a client sends (`max_tokens`, `tools`, `response_format`, list-style content, the `developer` role and so on) is passed through unchanged. Tested with the official OpenAI client library.
+- **The whole request and reply are scanned**, not just message text: content parts, tool-call arguments, tool results, tool definitions and any other field. IDs the API matches exactly are never rewritten.
+- **Images, audio and files are refused by default**, since they cannot be scanned. `allow_non_text_content: true` in the policy allows them.
 - **Built-in HTTPS.** With `TLS_CERT_FILE` and `TLS_KEY_FILE` the proxy serves TLS 1.2+ itself, AES-GCM suites only, and rejects plain HTTP. `TLS_TERMINATED_UPSTREAM=true` declares that a load balancer provides HTTPS instead. One of the two is required to start. `LLM_API_URL` must be HTTPS.
 - **Signed audit log.** With `AUDIT_HMAC_KEY` (required) every entry and the head record carry an HMAC-SHA-256 signature, so the log cannot be rewritten by someone who can only write files.
 - **Audit anchoring.** `AUDIT_ANCHOR_URL` receives the head record after every write. `/admin/audit/verify?anchor_entries=&anchor_hash=` checks any stored anchor against the log, which proves whether entries were removed or an older log was put back.
@@ -22,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API keys are compared in constant time.**
 
 ### Fixed
+- **A reply containing only a tool call crashed the proxy** (HTTP 500).
+- **The proxy added `temperature: 0.7` to every request.** It is now forwarded only when the caller sets it.
+- **Streaming requests are refused with a clear message** instead of being silently turned into non-streaming ones.
 - **`PROXY_API_KEYS` could not be set from an environment variable.** A comma-separated value stopped the server at startup, so the documented way to turn on authentication did not work.
 - **Audit chain with several workers.** Each worker kept its own copy of the last hash, so the shipped four-worker Docker setup produced a chain that failed verification. Writers now take a file lock and read the end of the file on every write.
 - **Deleted audit entries are detected.** A head record beside the log stores the entry count and newest hash; verification fails if entries were removed from the end, and the logger refuses to write to a log that does not match its head record.
