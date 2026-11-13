@@ -90,7 +90,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Governance-API-Key: my-api-key-1" \
   -d '{
-    "model": "gpt-4",
+    "model": "gpt-6-sol",
     "messages": [{"role": "user", "content": "Summarize this: Email is john@example.com"}]
   }'
 ```

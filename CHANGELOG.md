@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Jira alerts for blocked requests were never sent.** The alert was queued and then discarded when the request was rejected.
 
 ### Changed
+- **Model allowlist updated** to the models the providers offer as of November 2026. `gpt-4`, `gpt-4-turbo`, Claude 3 and `gemini-pro` are gone because the providers have shut them down. Limited-access security research models are not on the list.
 - **Test tooling:** pytest 9, to clear a published advisory in pytest 8 that was failing the dependency audit.
 
 ### Upgrade notes
