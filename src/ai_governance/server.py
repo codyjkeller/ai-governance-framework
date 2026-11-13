@@ -22,7 +22,7 @@ from typing import Any
 
 import structlog
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -42,6 +42,7 @@ from ai_governance.policy.loader import (
 from ai_governance.scanning.input_scanner import InputScanner
 from ai_governance.scanning.output_scanner import OutputScanner
 from ai_governance.scanning.payload import scan_request_payload, scan_response_payload
+from ai_governance.streaming import can_stream, completion_to_events, wants_stream, wants_usage, without_stream_fields
 
 # --- Structured logging setup ---
 structlog.configure(
@@ -264,7 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         chat_request: ChatRequest,
         background_tasks: BackgroundTasks,
-    ) -> dict[str, Any] | JSONResponse:
+    ) -> dict[str, Any] | JSONResponse | StreamingResponse:
         """Governance-proxied chat completion.
 
         1. Authenticate the request
@@ -296,12 +297,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # --- Streaming ---
         # A streamed response would reach the caller piece by piece before it
-        # could be scanned as a whole, so it is refused rather than passed unscanned.
-        if (chat_request.model_extra or {}).get("stream"):
-            raise HTTPException(
-                status_code=400,
-                detail="Streaming is not supported by this proxy. Send the request with stream set to false.",
-            )
+        # could be scanned as a whole. So the provider is asked for the complete
+        # reply, it is scanned like any other, and only then is it sent to the
+        # caller in streaming format.
+        stream_requested = wants_stream(chat_request.model_extra)
 
         # --- Model allowlist check ---
         if allowed_models and not _model_is_allowed(chat_request.model, allowed_models):
@@ -330,6 +329,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         input_status = "BLOCKED" if input_blocked else request_scan.status
         # Monitoring mode is log-only: the request is forwarded exactly as received.
         upstream_payload = chat_request.to_upstream_dict() if is_monitoring else request_scan.payload
+        if stream_requested:
+            upstream_payload = without_stream_fields(upstream_payload)
 
         audit("INPUT_SCAN", input_status, [v["type"] for v in input_violations] if input_violations else "Clean")
 
@@ -392,9 +393,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # A blocked response never reaches this point in blocking mode. In
         # monitoring mode the response is returned exactly as the model sent it;
         # otherwise any redactions the policy asked for have been applied.
-        if is_monitoring:
-            return upstream_response
-        result_payload: dict[str, Any] = output_result.payload
+        result_payload: dict[str, Any] = upstream_response if is_monitoring else output_result.payload
+        if stream_requested and can_stream(result_payload):
+            return StreamingResponse(
+                completion_to_events(result_payload, include_usage=wants_usage(chat_request.model_extra)),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache"},
+                background=background_tasks,
+            )
         return result_payload
 
     return app
