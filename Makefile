@@ -1,4 +1,4 @@
-.PHONY: help install dev lint test security run clean docker-build docker-up docker-down audit-verify
+.PHONY: help install dev lint test security run clean docker-build docker-up docker-down audit-verify inventory
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -46,6 +46,9 @@ docker-down: ## Stop the Docker Compose stack
 
 audit-verify: ## Verify audit log integrity
 	python -c "from ai_governance.audit.logger import AuditLogger; from pathlib import Path; a = AuditLogger(Path('audit_logs/governance.jsonl')); v, c = a.verify_chain(); print(f'Valid: {v}, Entries: {c}')"
+
+inventory: ## Check the AI use case inventory
+	ai-gov-inventory
 
 clean: ## Remove build artifacts and caches
 	rm -rf build/ dist/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov/ .coverage
