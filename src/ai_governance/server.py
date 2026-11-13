@@ -34,12 +34,14 @@ from ai_governance.integrations.jira import notify_jira
 from ai_governance.integrations.llm_client import LLMClientError, call_upstream_llm
 from ai_governance.models import ChatRequest
 from ai_governance.policy.loader import (
+    get_allow_non_text_content,
     get_allowed_models,
     get_enforcement_mode,
     load_policy,
 )
 from ai_governance.scanning.input_scanner import InputScanner
 from ai_governance.scanning.output_scanner import OutputScanner
+from ai_governance.scanning.payload import scan_request_payload, scan_response_payload
 
 # --- Structured logging setup ---
 structlog.configure(
@@ -141,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     policy = load_policy(settings.policy_path, strict=not settings.allow_insecure_dev)
     enforcement_mode = get_enforcement_mode(policy, settings.enforcement_mode)
     allowed_models = get_allowed_models(policy)
+    allow_non_text_content = get_allow_non_text_content(policy)
     policy_version = policy.get("global_settings", {}).get("policy_version", "unknown")
 
     # Initialize components
@@ -291,6 +294,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 client_user_id=client_user_id,
             )
 
+        # --- Streaming ---
+        # A streamed response would reach the caller piece by piece before it
+        # could be scanned as a whole, so it is refused rather than passed unscanned.
+        if (chat_request.model_extra or {}).get("stream"):
+            raise HTTPException(
+                status_code=400,
+                detail="Streaming is not supported by this proxy. Send the request with stream set to false.",
+            )
+
         # --- Model allowlist check ---
         if allowed_models and not _model_is_allowed(chat_request.model, allowed_models):
             audit("MODEL_DENIED", "BLOCKED", f"Model '{chat_request.model}' not in allowlist: {allowed_models}")
@@ -302,22 +314,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         # --- Layer 1: Input scan ---
-        # Every message is scanned, not only the newest one. Sensitive data in an
-        # earlier turn or in the system prompt is sent upstream just the same.
-        input_violations: list[dict[str, Any]] = []
-        input_blocked = False
-        input_redacted = False
-        for message in chat_request.messages:
-            message_result = input_scanner.scan(message.content)
-            input_violations.extend(message_result.violations)
-            if message_result.status == "BLOCKED":
-                input_blocked = True
-            elif message_result.status == "REDACTED" and message_result.text is not None:
-                input_redacted = True
-                # Monitoring mode is log-only: the prompt is forwarded unchanged.
-                if not is_monitoring:
-                    message.content = message_result.text
-        input_status = "BLOCKED" if input_blocked else "REDACTED" if input_redacted else "CLEAN"
+        # The whole request body is scanned: every message, content part, tool
+        # call, tool result and tool definition, not only the newest message.
+        request_scan = scan_request_payload(chat_request.to_upstream_dict(), input_scanner)
+        input_violations = list(request_scan.violations)
+        if request_scan.unscannable and not allow_non_text_content:
+            # Images, audio and files cannot be checked, so they are refused.
+            input_violations.extend(
+                {"type": f"UNSCANNABLE_CONTENT_{kind.upper()}", "sensitivity": "HIGH", "action": "BLOCK"}
+                for kind in sorted(set(request_scan.unscannable))
+            )
+        input_blocked = request_scan.status == "BLOCKED" or (
+            bool(request_scan.unscannable) and not allow_non_text_content
+        )
+        input_status = "BLOCKED" if input_blocked else request_scan.status
+        # Monitoring mode is log-only: the request is forwarded exactly as received.
+        upstream_payload = chat_request.to_upstream_dict() if is_monitoring else request_scan.payload
 
         audit("INPUT_SCAN", input_status, [v["type"] for v in input_violations] if input_violations else "Clean")
 
@@ -344,16 +356,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             upstream_response = await call_upstream_llm(
                 url=settings.llm_api_url,
                 api_key=settings.llm_api_key,
-                request_payload=chat_request.to_upstream_dict(),
+                request_payload=upstream_payload,
             )
         except LLMClientError as e:
             logger.error("upstream_llm_error", detail=e.internal_detail, transaction_id=transaction_id)
             raise HTTPException(status_code=502, detail=e.user_message) from e
 
-        raw_response = upstream_response["choices"][0]["message"]["content"]
-
         # --- Layer 5: Output scan ---
-        output_result = output_scanner.scan(raw_response)
+        # Every choice, tool call and refusal in the response is scanned,
+        # whatever shape the response has.
+        output_result = scan_response_payload(upstream_response, output_scanner)
 
         if output_result.status == "BLOCKED":
             audit("OUTPUT_SCAN", "BLOCKED", [v["type"] for v in output_result.violations])

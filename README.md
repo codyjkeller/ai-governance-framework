@@ -17,7 +17,8 @@ This framework acts as a **Governance Proxy** a FastAPI middleware layer that si
 
 ## Features
 
-- **Multi-Domain Scanning:** Regex-based detection for PII, Medical Data (HIPAA), and DevOps Secrets (AWS Keys, private keys, API tokens). Every message in the conversation is scanned, including earlier turns and the system prompt.
+- **Multi-Domain Scanning:** Regex-based detection for PII, Medical Data (HIPAA), and DevOps Secrets (AWS Keys, private keys, API tokens). The whole request is scanned: every message, tool call, tool result and tool definition. So is everything in the model's reply.
+- **Works With Existing OpenAI Clients:** Point the official SDK's `base_url` at the proxy. Tools, `max_tokens`, `response_format` and the rest of the chat format pass through unchanged.
 - **Real-Time API Proxy:** Drop-in replacement for OpenAI's `/v1/chat/completions` endpoint with governance enforcement.
 - **Policy-as-Code:** DLP rules defined in YAML (`policies/generative_ai_aup.yaml`), updatable by GRC teams without code changes.
 - **Model Allowlisting:** Only approved model families (defined in YAML) can be used. Unapproved models are rejected.
@@ -220,7 +221,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 - **No log retention or rotation.** The proxy appends to one file. Archive and expire it to match your retention policy.
 - **The `user_id` field in a request is not verified.** The audit log records the owner of the API key as `user_id` and stores the caller-supplied value separately as `client_user_id`.
 - **Rate limits are per worker.** With four workers, a key can make up to four times `RATE_LIMIT` requests per minute. Use a shared store or your gateway's rate limiting if you need an exact limit.
-- **Not yet a full drop-in for the OpenAI API.** Only `model`, `messages` and `temperature` are forwarded. Tools, streaming and list-style message content are not supported yet.
+- **Streaming is not supported.** A request with `stream: true` is refused, because a streamed reply would reach the caller before it could be scanned as a whole.
+- **Images, audio and files are refused by default.** Pattern matching cannot read them, so a photo of an ID card would pass straight through. Set `allow_non_text_content: true` in the policy to allow them unscanned.
 - **Single upstream provider format.** Currently supports OpenAI-compatible APIs. Azure OpenAI and other providers require URL/auth format changes.
 
 ## Security

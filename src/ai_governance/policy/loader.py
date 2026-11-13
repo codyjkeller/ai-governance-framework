@@ -119,6 +119,8 @@ def find_policy_problems(policy: dict[str, Any]) -> list[str]:
     mode = global_settings.get("enforcement_mode", "blocking")
     if mode not in VALID_ENFORCEMENT_MODES:
         problems.append(f"enforcement_mode is '{mode}'. Valid: {sorted(VALID_ENFORCEMENT_MODES)}")
+    if not isinstance(global_settings.get("allow_non_text_content", False), bool):
+        problems.append("allow_non_text_content must be true or false.")
     families = global_settings.get("allowed_model_families", [])
     if not isinstance(families, list) or not all(isinstance(item, str) and item for item in families):
         problems.append("allowed_model_families must be a list of text patterns.")
@@ -226,3 +228,11 @@ def get_data_rule(policy: dict[str, Any], rule_name: str) -> dict[str, str]:
         {"action": "REDACT", "sensitivity": "HIGH"},
     )
     return rule
+
+
+def get_allow_non_text_content(policy: dict[str, Any]) -> bool:
+    """Whether images, audio and files may be sent to the model.
+
+    They cannot be scanned by pattern matching, so the default is no.
+    """
+    return policy.get("global_settings", {}).get("allow_non_text_content", False) is True

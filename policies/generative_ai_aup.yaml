@@ -20,6 +20,10 @@ global_settings:
   #   monitoring - log violations but allow all traffic through (rollout/testing)
   enforcement_mode: "blocking"
 
+  # Images, audio and files cannot be scanned for sensitive data. A photo of
+  # an ID card would pass straight through. They are refused unless this is true.
+  allow_non_text_content: false
+
   # Glob patterns for approved model families.
   # Empty list = all models allowed.
   # Requests for models not matching any pattern are denied.

@@ -6,23 +6,37 @@ entering and leaving the proxy.
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatMessage(BaseModel):
-    """A single message in a chat conversation."""
+    """A single message in a chat conversation.
+
+    Other fields the OpenAI format allows (tool_calls, tool_call_id, name, ...)
+    are accepted and passed on. Their text is scanned like everything else.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     role: str = Field(
         ...,
         description="Message role.",
-        pattern=r"^(system|user|assistant|tool)$",
+        pattern=r"^(system|developer|user|assistant|tool|function)$",
     )
-    content: str = Field(
-        ...,
+    # Text, a list of content parts, or nothing at all (an assistant message
+    # that only carries tool calls has no content).
+    content: str | list[dict[str, Any]] | None = Field(
+        default=None,
         description="Message content.",
-        min_length=1,
-        max_length=128_000,
     )
+
+    @field_validator("content")
+    @classmethod
+    def limit_text_length(cls, v: str | list[dict[str, Any]] | None) -> str | list[dict[str, Any]] | None:
+        if isinstance(v, str) and len(v) > 128_000:
+            msg = "message content must be at most 128000 characters"
+            raise ValueError(msg)
+        return v
 
 
 class ChatRequest(BaseModel):
@@ -30,7 +44,12 @@ class ChatRequest(BaseModel):
 
     Mirrors the OpenAI API schema with additional governance fields.
     Internal fields (user_id) are stripped before forwarding upstream.
+
+    Any other field the OpenAI format allows (max_tokens, tools,
+    response_format, ...) is accepted, scanned, and passed on unchanged.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     model: str = Field(
         ...,
@@ -48,8 +67,10 @@ class ChatRequest(BaseModel):
         description="Internal: identity of the requesting user/service.",
         max_length=256,
     )
-    temperature: float = Field(
-        default=0.7,
+    # Only forwarded when the caller sets it. The proxy used to add 0.7 to every
+    # request, which changes results and is rejected by some models.
+    temperature: float | None = Field(
+        default=None,
         description="Sampling temperature.",
         ge=0.0,
         le=2.0,
@@ -68,14 +89,10 @@ class ChatRequest(BaseModel):
         """Serialize for the upstream LLM provider, stripping internal fields.
 
         The upstream API (OpenAI, Azure, etc.) does not know about user_id
-        and will reject unknown fields. This method returns only the fields
-        the upstream provider expects.
+        and will reject unknown fields. Everything else the caller sent is
+        returned exactly as sent; nothing is added.
         """
-        return {
-            "model": self.model,
-            "messages": [m.model_dump() for m in self.messages],
-            "temperature": self.temperature,
-        }
+        return self.model_dump(exclude={"user_id"}, exclude_unset=True)
 
 
 class ScanResult(BaseModel):
