@@ -1,17 +1,20 @@
 """FastAPI governance proxy server.
 
 This is the main application entrypoint. It:
-- Validates configuration at startup (fails fast if misconfigured)
+- Validates configuration at startup and refuses to start if it is unsafe
+  (no API keys, or a missing or invalid policy file)
 - Authenticates requests via API key header
-- Rate limits per client IP
+- Rate limits per API key (per client IP for requests without a valid key)
 - Enforces model allowlisting from the YAML policy
 - Runs input scanning (Layer 1) and output scanning (Layer 5)
 - Logs all decisions to the tamper-evident audit log
-- Supports 'monitoring' mode (log-only, no blocking)
+- Refuses a request when its audit entry cannot be written
+- Supports 'monitoring' mode (log-only: nothing is blocked or altered)
 - Fires Jira webhooks for critical violations (async background task)
 """
 
 import fnmatch
+import hmac
 import logging
 import uuid
 from typing import Any
@@ -23,7 +26,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from ai_governance.audit.logger import AuditLogger
+from ai_governance.audit.logger import AuditLogger, AuditWriteError
 from ai_governance.config import Settings, get_settings
 from ai_governance.integrations.jira import notify_jira
 from ai_governance.integrations.llm_client import LLMClientError, call_upstream_llm
@@ -52,8 +55,32 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
-# --- Rate limiter ---
-limiter = Limiter(key_func=get_remote_address)
+class ConfigurationError(Exception):
+    """The proxy is configured in a way that is not safe to run."""
+
+
+def _identify(api_key: str, identities: dict[str, str]) -> str | None:
+    """Return the name that belongs to an API key, or None if the key is not valid.
+
+    Every configured key is compared in constant time, so response timing
+    does not reveal how close a guess was.
+    """
+    found: str | None = None
+    for known_key, name in identities.items():
+        if hmac.compare_digest(api_key.encode("utf-8"), known_key.encode("utf-8")):
+            found = name
+    return found
+
+
+def _rate_limit_key(request: Request) -> str:
+    """Count requests per API key. Requests without a valid key are counted per client IP.
+
+    Per-IP counting alone does little behind a reverse proxy, where every
+    caller arrives from the same address.
+    """
+    identities: dict[str, str] = getattr(request.app.state, "key_identities", {})
+    name = _identify(request.headers.get("X-Governance-API-Key", ""), identities)
+    return f"key:{name}" if name else get_remote_address(request)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -76,8 +103,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Configure stdlib logging level from settings
     logging.basicConfig(level=getattr(logging, settings.log_level))
 
-    # Load policy
-    policy = load_policy(settings.policy_path)
+    # Refuse to start as an open proxy
+    key_identities = settings.api_key_identities()
+    if not key_identities and not settings.allow_insecure_dev:
+        msg = (
+            "PROXY_API_KEYS is not set, so anyone who can reach this proxy could use your LLM account. "
+            "Set PROXY_API_KEYS (for example 'billing-app:<long random key>'). "
+            "For a local demo only, set ALLOW_INSECURE_DEV=true."
+        )
+        raise ConfigurationError(msg)
+    if settings.allow_insecure_dev:
+        logger.warning(
+            "insecure_dev_mode",
+            detail="ALLOW_INSECURE_DEV is on. Safety checks are relaxed. Do not use with real data.",
+        )
+
+    # Load policy. Strict: a missing or invalid policy file stops the proxy
+    # instead of quietly falling back to a weaker one.
+    policy = load_policy(settings.policy_path, strict=not settings.allow_insecure_dev)
     enforcement_mode = get_enforcement_mode(policy, settings.enforcement_mode)
     allowed_models = get_allowed_models(policy)
     policy_version = policy.get("global_settings", {}).get("policy_version", "unknown")
@@ -95,10 +138,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+    # --- Rate limiter ---
+    # One limiter per app. A limiter shared at module level would carry the
+    # limits of one app instance over to the next.
+    limiter = Limiter(key_func=_rate_limit_key)
     app.state.limiter = limiter
 
     # Store on app state for dependency injection
     app.state.settings = settings
+    app.state.key_identities = key_identities
     app.state.input_scanner = input_scanner
     app.state.output_scanner = output_scanner
     app.state.auditor = auditor
@@ -115,6 +163,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"detail": "Rate limit exceeded. Please slow down."},
         )
 
+    @app.exception_handler(AuditWriteError)
+    async def audit_failure_handler(request: Request, exc: AuditWriteError) -> JSONResponse:
+        # Fail closed: a request that cannot be audited does not go through.
+        logger.error("audit_write_failed", detail=str(exc))
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Request refused: the audit log is unavailable."},
+        )
+
     # --- Health check ---
     @app.get("/health")
     async def health_check() -> dict[str, Any]:
@@ -124,6 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "version": "3.0.0",
             "enforcement_mode": enforcement_mode,
             "policy_version": policy_version,
+            "insecure_dev_mode": settings.allow_insecure_dev,
         }
 
     # --- Audit log verification ---
@@ -133,7 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         Requires authentication (same API key header as the main endpoint).
         """
-        _authenticate(request, settings)
+        _authenticate(request, key_identities)
         is_valid, count = auditor.verify_chain()
         return {
             "chain_valid": is_valid,
@@ -152,27 +210,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         1. Authenticate the request
         2. Validate the requested model against the allowlist
-        3. Scan the input prompt (Layer 1)
+        3. Scan every message in the conversation (Layer 1)
         4. Forward to upstream LLM
         5. Scan the output (Layer 5)
         6. Return the safe response
         """
-        _authenticate(request, settings)
+        # The audit log records who the API key belongs to. The user_id in the
+        # request body is whatever the caller typed, so it is kept separately.
+        user_id = _authenticate(request, key_identities)
 
         transaction_id = str(uuid.uuid4())
-        user_id = chat_request.user_id
+        client_user_id = chat_request.user_id if chat_request.user_id != "anonymous" else None
         is_monitoring = enforcement_mode == "monitoring"
+
+        def audit(event_type: str, status: str, details: str | list[Any]) -> None:
+            auditor.log_event(
+                event_type=event_type,
+                transaction_id=transaction_id,
+                status=status,
+                details=details,
+                user_id=user_id,
+                policy_version=policy_version,
+                enforced=not is_monitoring,
+                client_user_id=client_user_id,
+            )
 
         # --- Model allowlist check ---
         if allowed_models and not _model_is_allowed(chat_request.model, allowed_models):
-            auditor.log_event(
-                event_type="MODEL_DENIED",
-                transaction_id=transaction_id,
-                status="BLOCKED",
-                details=f"Model '{chat_request.model}' not in allowlist: {allowed_models}",
-                user_id=user_id,
-                policy_version=policy_version,
-            )
+            audit("MODEL_DENIED", "BLOCKED", f"Model '{chat_request.model}' not in allowlist: {allowed_models}")
             if not is_monitoring:
                 raise HTTPException(
                     status_code=403,
@@ -181,20 +246,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         # --- Layer 1: Input scan ---
-        user_prompt = chat_request.messages[-1].content
-        input_result = input_scanner.scan(user_prompt)
+        # Every message is scanned, not only the newest one. Sensitive data in an
+        # earlier turn or in the system prompt is sent upstream just the same.
+        input_violations: list[dict[str, Any]] = []
+        input_blocked = False
+        input_redacted = False
+        for message in chat_request.messages:
+            message_result = input_scanner.scan(message.content)
+            input_violations.extend(message_result.violations)
+            if message_result.status == "BLOCKED":
+                input_blocked = True
+            elif message_result.status == "REDACTED" and message_result.text is not None:
+                input_redacted = True
+                # Monitoring mode is log-only: the prompt is forwarded unchanged.
+                if not is_monitoring:
+                    message.content = message_result.text
+        input_status = "BLOCKED" if input_blocked else "REDACTED" if input_redacted else "CLEAN"
 
-        auditor.log_event(
-            event_type="INPUT_SCAN",
-            transaction_id=transaction_id,
-            status=input_result.status,
-            details=[v["type"] for v in input_result.violations] if input_result.violations else "Clean",
-            user_id=user_id,
-            policy_version=policy_version,
-        )
+        audit("INPUT_SCAN", input_status, [v["type"] for v in input_violations] if input_violations else "Clean")
 
-        if input_result.status == "BLOCKED":
-            violation_types = ", ".join(v["type"] for v in input_result.violations)
+        if input_blocked:
+            violation_types = ", ".join(v["type"] for v in input_violations)
             background_tasks.add_task(
                 notify_jira,
                 settings.jira_webhook,
@@ -207,10 +279,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=403,
                     detail="Request blocked by AI Acceptable Use Policy.",
                 )
-
-        # Apply redactions to the request
-        if input_result.status == "REDACTED" and input_result.text is not None:
-            chat_request.messages[-1].content = input_result.text
 
         # --- Layer 2: Upstream LLM call ---
         try:
@@ -229,14 +297,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         output_result = output_scanner.scan(raw_response)
 
         if output_result.status == "BLOCKED":
-            auditor.log_event(
-                event_type="OUTPUT_SCAN",
-                transaction_id=transaction_id,
-                status="BLOCKED",
-                details=[v["type"] for v in output_result.violations],
-                user_id=user_id,
-                policy_version=policy_version,
-            )
+            audit("OUTPUT_SCAN", "BLOCKED", [v["type"] for v in output_result.violations])
             background_tasks.add_task(
                 notify_jira,
                 settings.jira_webhook,
@@ -251,46 +312,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         # --- Success ---
-        auditor.log_event(
-            event_type="TRANSACTION_COMPLETE",
-            transaction_id=transaction_id,
-            status="SUCCESS",
-            details="Request fulfilled",
-            user_id=user_id,
-            policy_version=policy_version,
-        )
+        audit("TRANSACTION_COMPLETE", "SUCCESS", "Request fulfilled")
 
-        # Return the (possibly redacted) response
-        if output_result.text is not None:
-            upstream_response["choices"][0]["message"]["content"] = output_result.text
+        # A blocked response never reaches this point in blocking mode. In
+        # monitoring mode the response is returned exactly as the model sent it.
         return upstream_response
 
     return app
 
 
-def _authenticate(request: Request, settings: Settings) -> None:
-    """Validate the API key from the request header.
+def _authenticate(request: Request, identities: dict[str, str]) -> str:
+    """Validate the API key from the request header and return who it belongs to.
 
-    If no proxy_api_keys are configured, authentication is disabled
-    (open access). This allows development use without keys while
-    requiring them in production.
+    If no keys are configured the proxy only starts with ALLOW_INSECURE_DEV=true,
+    and every caller is recorded as 'unauthenticated'.
 
     Args:
         request: The incoming HTTP request.
-        settings: Application settings.
+        identities: API keys mapped to the name recorded in the audit log.
+
+    Returns:
+        The name that belongs to the caller's API key.
 
     Raises:
         HTTPException: 401 if the API key is missing or invalid.
     """
-    if not settings.proxy_api_keys:
-        return  # Auth disabled — no keys configured
+    if not identities:
+        return "unauthenticated"  # Only reachable in insecure dev mode
 
-    api_key = request.headers.get("X-Governance-API-Key", "")
-    if api_key not in settings.proxy_api_keys:
+    name = _identify(request.headers.get("X-Governance-API-Key", ""), identities)
+    if name is None:
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-Governance-API-Key header.",
         )
+    return name
 
 
 def _model_is_allowed(model: str, allowed_patterns: list[str]) -> bool:
@@ -311,7 +367,19 @@ def _model_is_allowed(model: str, allowed_patterns: list[str]) -> bool:
 # --- Module-level app for uvicorn ---
 # `uvicorn ai_governance.server:app` will use this.
 # Tests use create_app() directly with custom settings.
-app = create_app()
+#
+# The app is built the first time it is asked for, not when this module is
+# imported, so importing the module never fails on missing configuration.
+_app: FastAPI | None = None
+
+
+def __getattr__(name: str) -> Any:
+    if name == "app":
+        global _app
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def main() -> None:

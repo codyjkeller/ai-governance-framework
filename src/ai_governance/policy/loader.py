@@ -39,18 +39,32 @@ DEFAULT_POLICY: dict[str, Any] = {
 
 VALID_ACTIONS = {"ALLOW", "REDACT", "BLOCK"}
 VALID_SENSITIVITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+VALID_ENFORCEMENT_MODES = {"blocking", "monitoring"}
 
 
-def load_policy(policy_path: Path) -> dict[str, Any]:
+class PolicyError(Exception):
+    """The policy file is missing or invalid and strict loading was requested."""
+
+
+def load_policy(policy_path: Path, strict: bool = False) -> dict[str, Any]:
     """Load and validate the YAML policy file.
 
     Args:
         policy_path: Path to the YAML policy file.
+        strict: If True, a missing or invalid policy raises PolicyError
+            instead of falling back. The server uses strict loading so a
+            policy mistake stops the proxy instead of quietly weakening it.
 
     Returns:
-        Parsed policy dictionary. Falls back to DEFAULT_POLICY
-        if the file is missing or invalid, logging a warning.
+        Parsed policy dictionary. When strict is False, falls back to
+        DEFAULT_POLICY if the file is missing or invalid, logging a warning.
+
+    Raises:
+        PolicyError: Only when strict is True.
     """
+    if strict:
+        return _load_policy_strict(policy_path)
+
     if not policy_path.exists():
         logger.warning(
             "Policy file not found at '%s'. Using default policy. "
@@ -72,6 +86,63 @@ def load_policy(policy_path: Path) -> dict[str, Any]:
 
     _validate_policy(policy, policy_path)
     return policy
+
+
+def _load_policy_strict(policy_path: Path) -> dict[str, Any]:
+    """Load the policy, raising PolicyError that lists every problem found."""
+    if not policy_path.exists():
+        raise PolicyError(f"Policy file not found: {policy_path}")
+    try:
+        with open(policy_path) as f:
+            policy = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise PolicyError(f"Policy file {policy_path} is not valid YAML: {e}") from e
+    if not isinstance(policy, dict):
+        raise PolicyError(f"Policy file {policy_path} must contain a YAML mapping at the top level.")
+
+    problems = find_policy_problems(policy)
+    if problems:
+        raise PolicyError(f"Policy file {policy_path} is invalid:\n" + "\n".join(f"  - {p}" for p in problems))
+    return policy
+
+
+def find_policy_problems(policy: dict[str, Any]) -> list[str]:
+    """Return a description of every invalid value in the policy (empty list = valid)."""
+    # Imported here: the pattern registry is only needed for validation.
+    from ai_governance.scanning.patterns import INPUT_PATTERNS
+
+    problems: list[str] = []
+
+    global_settings = policy.get("global_settings", {})
+    if not isinstance(global_settings, dict):
+        return ["global_settings must be a mapping."]
+    mode = global_settings.get("enforcement_mode", "blocking")
+    if mode not in VALID_ENFORCEMENT_MODES:
+        problems.append(f"enforcement_mode is '{mode}'. Valid: {sorted(VALID_ENFORCEMENT_MODES)}")
+    families = global_settings.get("allowed_model_families", [])
+    if not isinstance(families, list) or not all(isinstance(item, str) and item for item in families):
+        problems.append("allowed_model_families must be a list of text patterns.")
+
+    data_rules = policy.get("data_rules", {})
+    if not isinstance(data_rules, dict):
+        return [*problems, "data_rules must be a mapping."]
+    for rule_name, rule_config in data_rules.items():
+        if str(rule_name).lower() not in INPUT_PATTERNS:
+            # A misspelled rule name would leave the real pattern on its default action.
+            problems.append(f"data_rules.{rule_name}: no detection pattern has this name.")
+            continue
+        if not isinstance(rule_config, dict):
+            problems.append(f"data_rules.{rule_name} must be a mapping with 'action' and 'sensitivity'.")
+            continue
+        action = rule_config.get("action", "")
+        if action not in VALID_ACTIONS:
+            problems.append(f"data_rules.{rule_name}.action is '{action}'. Valid: {sorted(VALID_ACTIONS)}")
+        sensitivity = rule_config.get("sensitivity", "")
+        if sensitivity not in VALID_SENSITIVITIES:
+            problems.append(
+                f"data_rules.{rule_name}.sensitivity is '{sensitivity}'. Valid: {sorted(VALID_SENSITIVITIES)}"
+            )
+    return problems
 
 
 def _validate_policy(policy: dict[str, Any], policy_path: Path) -> None:

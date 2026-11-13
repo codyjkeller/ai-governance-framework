@@ -32,6 +32,7 @@ This framework is a governance proxy that processes potentially sensitive data (
 
 - **Regex-based detection has known limitations.** It will miss encoded, obfuscated, or context-dependent sensitive data. See `src/ai_governance/scanning/patterns.py` for documented false-positive and false-negative notes per pattern.
 - **Audit logs contain metadata but not the full prompt/response by default.** Matched values are partially masked in logs.
+- **The proxy fails closed.** It will not start without API keys or with an invalid policy file, and it refuses requests it cannot audit. `ALLOW_INSECURE_DEV=true` turns the startup checks off and must never be set in a real deployment.
 - **This tool does not guarantee regulatory compliance.** It is one layer in a defense-in-depth strategy. Consult your compliance team before deploying in HIPAA, CJIS, or other regulated environments.
 - **TLS termination is your responsibility.** The proxy runs on plaintext HTTP. Deploy behind a reverse proxy (nginx, Traefik, Envoy) with TLS in production.
 

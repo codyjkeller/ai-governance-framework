@@ -4,8 +4,11 @@ Covers: valid policy loading, missing file fallback, malformed YAML,
 and helper functions for enforcement mode, model allowlisting, and rule lookup.
 """
 
+import pytest
+
 from ai_governance.policy.loader import (
     DEFAULT_POLICY,
+    PolicyError,
     get_allowed_models,
     get_data_rule,
     get_enforcement_mode,
@@ -84,3 +87,56 @@ class TestGetDataRule:
         policy = {"data_rules": {"email": {"action": "REDACT", "sensitivity": "MEDIUM"}}}
         rule = get_data_rule(policy, "EMAIL")
         assert rule["action"] == "REDACT"
+
+
+class TestStrictLoading:
+    """The server loads the policy with strict=True: mistakes stop startup."""
+
+    def test_shipped_policy_is_valid(self):
+        from pathlib import Path
+
+        policy = load_policy(Path(__file__).parent.parent / "policies" / "generative_ai_aup.yaml", strict=True)
+        assert policy["global_settings"]["enforcement_mode"] == "blocking"
+
+    def test_missing_file_is_an_error(self, tmp_path):
+        with pytest.raises(PolicyError, match="not found"):
+            load_policy(tmp_path / "nonexistent.yaml", strict=True)
+
+    def test_malformed_yaml_is_an_error(self, tmp_path):
+        bad_file = tmp_path / "bad.yaml"
+        bad_file.write_text("global_settings: [unclosed")
+        with pytest.raises(PolicyError, match="not valid YAML"):
+            load_policy(bad_file, strict=True)
+
+    def test_non_mapping_is_an_error(self, tmp_path):
+        list_file = tmp_path / "list.yaml"
+        list_file.write_text("- item1\n")
+        with pytest.raises(PolicyError, match="mapping"):
+            load_policy(list_file, strict=True)
+
+    @pytest.mark.parametrize(
+        ("body", "message"),
+        [
+            ("data_rules:\n  ssn: {action: BLOK, sensitivity: CRITICAL}\n", "data_rules.ssn.action is 'BLOK'"),
+            ("data_rules:\n  ssn: {action: BLOCK, sensitivity: SEVERE}\n", "data_rules.ssn.sensitivity is 'SEVERE'"),
+            ("data_rules:\n  snn: {action: BLOCK, sensitivity: CRITICAL}\n", "data_rules.snn: no detection pattern"),
+            ("data_rules:\n  ssn: BLOCK\n", "data_rules.ssn must be a mapping"),
+            ("global_settings:\n  enforcement_mode: audit\n", "enforcement_mode is 'audit'"),
+            ("global_settings:\n  allowed_model_families: gpt-4\n", "allowed_model_families must be a list"),
+        ],
+    )
+    def test_invalid_values_are_errors(self, tmp_path, body, message):
+        policy_file = tmp_path / "policy.yaml"
+        policy_file.write_text(body)
+        with pytest.raises(PolicyError, match=message):
+            load_policy(policy_file, strict=True)
+
+    def test_every_problem_is_reported_at_once(self, tmp_path):
+        policy_file = tmp_path / "policy.yaml"
+        policy_file.write_text(
+            "global_settings:\n  enforcement_mode: audit\n"
+            "data_rules:\n  ssn: {action: BLOK, sensitivity: CRITICAL}\n  snn: {action: BLOCK, sensitivity: HIGH}\n"
+        )
+        with pytest.raises(PolicyError) as error:
+            load_policy(policy_file, strict=True)
+        assert str(error.value).count("\n  - ") == 3

@@ -5,7 +5,7 @@
 # Usage:
 #   # Set required environment variables first:
 #   export LLM_API_KEY="sk-your-real-key"
-#   export PROXY_API_KEYS="key1,key2"  # Keys that clients use to auth to this proxy
+#   export PROXY_API_KEYS="billing-app:key1,support-bot:key2"  # name:key pairs clients use to auth to this proxy
 #
 #   # Start:
 #   docker compose up -d
@@ -28,7 +28,7 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:?Set LLM_API_KEY in your environment}
       - LLM_API_URL=${LLM_API_URL:-https://api.openai.com/v1/chat/completions}
       - JIRA_WEBHOOK=${JIRA_WEBHOOK:-}
-      - PROXY_API_KEYS=${PROXY_API_KEYS:-}
+      - PROXY_API_KEYS=${PROXY_API_KEYS:?Set PROXY_API_KEYS, for example billing-app:<long random key>}
       - ENFORCEMENT_MODE=${ENFORCEMENT_MODE:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - RATE_LIMIT=${RATE_LIMIT:-60}

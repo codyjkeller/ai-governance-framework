@@ -4,11 +4,13 @@ All settings are loaded from environment variables and validated at startup.
 If a required variable is missing or invalid, the application refuses to start.
 """
 
+import hashlib
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -26,6 +28,10 @@ class Settings(BaseSettings):
         RATE_LIMIT: Requests per minute per client (0 = disabled).
         ENFORCEMENT_MODE: Override policy enforcement mode (blocking, monitoring).
         PROXY_API_KEYS: Comma-separated list of valid API keys for proxy auth.
+            Write each one as name:key (for example "billing-app:3f9c...") so the
+            audit log records who made each request.
+        ALLOW_INSECURE_DEV: Set to true to run without the safety checks that
+            stop a misconfigured proxy from starting. Local demos only.
     """
 
     model_config = {"env_prefix": "", "case_sensitive": False}
@@ -74,9 +80,19 @@ class Settings(BaseSettings):
     )
 
     # --- Proxy Authentication ---
-    proxy_api_keys: list[str] = Field(
+    # NoDecode: read the env var as plain text. Without it pydantic-settings tries
+    # to parse the value as JSON first and "key1,key2" stops the app at startup.
+    proxy_api_keys: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
-        description="Comma-separated list of valid API keys for authenticating to this proxy.",
+        description="Comma-separated list of valid API keys for authenticating to this proxy. "
+        "Each entry is either 'name:key' or just 'key'.",
+    )
+
+    # --- Safety override ---
+    allow_insecure_dev: bool = Field(
+        default=False,
+        description="Local demos only. When true the proxy starts without API keys and "
+        "falls back to the built-in policy if the policy file is missing or invalid.",
     )
 
     @field_validator("llm_api_key")
@@ -114,6 +130,22 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [k.strip() for k in v.split(",") if k.strip()]
         return v
+
+    def api_key_identities(self) -> dict[str, str]:
+        """Map each configured API key to the name recorded in the audit log.
+
+        'billing-app:3f9c...' gives the key '3f9c...' the name 'billing-app'.
+        A bare key gets a name derived from its hash ('key-1a2b3c4d'), so
+        the key itself is never written to a log.
+        """
+        identities: dict[str, str] = {}
+        for entry in self.proxy_api_keys:
+            name, separator, key = entry.partition(":")
+            if separator and name.strip() and key.strip():
+                identities[key.strip()] = name.strip()
+            else:
+                identities[entry] = "key-" + hashlib.sha256(entry.encode("utf-8")).hexdigest()[:8]
+        return identities
 
 
 @lru_cache

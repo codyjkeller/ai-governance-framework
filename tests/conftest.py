@@ -16,6 +16,28 @@ from ai_governance.scanning.input_scanner import InputScanner
 from ai_governance.scanning.output_scanner import OutputScanner
 
 
+class FakeUpstream:
+    """Stands in for the upstream LLM. Records every payload it is sent."""
+
+    def __init__(self):
+        self.payloads = []
+        self.reply = "The answer is 4."
+
+    async def __call__(self, url, api_key, request_payload, timeout=60.0):
+        self.payloads.append(request_payload)
+        return {"choices": [{"message": {"role": "assistant", "content": self.reply}}]}
+
+
+@pytest.fixture(autouse=True)
+def upstream(monkeypatch):
+    """No test ever calls a real LLM provider."""
+    from ai_governance import server
+
+    fake = FakeUpstream()
+    monkeypatch.setattr(server, "call_upstream_llm", fake)
+    return fake
+
+
 @pytest.fixture
 def sample_policy():
     """Load the real YAML policy from the repo."""
