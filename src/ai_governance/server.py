@@ -2,7 +2,8 @@
 
 This is the main application entrypoint. It:
 - Validates configuration at startup and refuses to start if it is unsafe
-  (no API keys, or a missing or invalid policy file)
+  (no API keys, no TLS, no audit signing key, or a missing or invalid policy file)
+- Serves HTTPS itself (TLS 1.2+) when given a certificate and key
 - Authenticates requests via API key header
 - Rate limits per API key (per client IP for requests without a valid key)
 - Enforces model allowlisting from the YAML policy
@@ -113,6 +114,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "For a local demo only, set ALLOW_INSECURE_DEV=true."
         )
         raise ConfigurationError(msg)
+    if not settings.serves_tls and not settings.tls_terminated_upstream and not settings.allow_insecure_dev:
+        msg = (
+            "No TLS is configured, so prompts and API keys would cross the network in clear text. "
+            "Set TLS_CERT_FILE and TLS_KEY_FILE to have the proxy serve HTTPS, or set "
+            "TLS_TERMINATED_UPSTREAM=true if a load balancer or ingress in front of it provides HTTPS. "
+            "For a local demo only, set ALLOW_INSECURE_DEV=true."
+        )
+        raise ConfigurationError(msg)
     if not settings.audit_hmac_key and not settings.allow_insecure_dev:
         msg = (
             "AUDIT_HMAC_KEY is not set, so audit entries would be unsigned and anyone who can write "
@@ -183,6 +192,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"detail": "Rate limit exceeded. Please slow down."},
         )
 
+    if settings.serves_tls:
+
+        @app.middleware("http")
+        async def require_https(request: Request, call_next: Any) -> Any:
+            # main() only opens an HTTPS listener. This catches the proxy being
+            # started some other way that leaves a plain HTTP port open.
+            if request.url.scheme != "https":
+                return JSONResponse(status_code=400, content={"detail": "HTTPS is required."})
+            response = await call_next(request)
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
+            return response
+
     @app.exception_handler(AuditWriteError)
     async def audit_failure_handler(request: Request, exc: AuditWriteError) -> JSONResponse:
         # Fail closed: a request that cannot be audited does not go through.
@@ -202,6 +223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "enforcement_mode": enforcement_mode,
             "policy_version": policy_version,
             "insecure_dev_mode": settings.allow_insecure_dev,
+            "tls": "native" if settings.serves_tls else "upstream" if settings.tls_terminated_upstream else "none",
             "audit_signing": bool(settings.audit_hmac_key),
             "audit_anchor": anchor.status() if anchor else {"configured": False},
         }
@@ -426,8 +448,29 @@ def main() -> None:
     settings = get_settings()
     uvicorn.run(
         "ai_governance.server:app",
-        host="0.0.0.0",  # noqa: S104 - Intentional: server must bind to all interfaces
-        port=8000,
+        host=settings.host,
+        port=settings.port,
+        workers=settings.workers,
         log_level=settings.log_level.lower(),
         reload=False,
+        **tls_options(settings),
     )
+
+
+# TLS 1.2 cipher suites offered when the proxy serves HTTPS itself: forward
+# secrecy (ECDHE) with AES-GCM only. TLS 1.3 suites are chosen by OpenSSL.
+TLS_CIPHERS = "ECDHE+AESGCM"
+
+
+def tls_options(settings: Settings) -> dict[str, Any]:
+    """Uvicorn options for HTTPS. Empty when TLS is handled in front of the proxy.
+
+    Python refuses TLS 1.0 and 1.1 by default, so the minimum is TLS 1.2.
+    """
+    if not settings.serves_tls:
+        return {}
+    return {
+        "ssl_certfile": str(settings.tls_cert_file),
+        "ssl_keyfile": str(settings.tls_key_file),
+        "ssl_ciphers": TLS_CIPHERS,
+    }

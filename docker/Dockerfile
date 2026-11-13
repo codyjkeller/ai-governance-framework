@@ -43,14 +43,14 @@ USER appuser
 EXPOSE 8000
 
 # Health check - uses the /health endpoint
+# Uses HTTPS when the proxy serves TLS itself. Certificate checking is off for
+# this one call because the certificate is issued for the public name, not localhost.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import httpx; r = httpx.get('http://localhost:8000/health'); r.raise_for_status()" || exit 1
+    CMD python -c "import os, httpx; s = 'https' if os.getenv('TLS_CERT_FILE') else 'http'; httpx.get(f'{s}://localhost:8000/health', verify=False).raise_for_status()" || exit 1
 
-# Run with uvicorn directly (production settings)
-# Workers can be overridden via UVICORN_WORKERS env var
-ENTRYPOINT ["uvicorn", "ai_governance.server:app", \
-    "--host", "0.0.0.0", \
-    "--port", "8000", \
-    "--workers", "4", \
-    "--access-log", \
-    "--log-level", "info"]
+# Four workers by default. Override with the WORKERS env var.
+ENV WORKERS=4
+
+# Started through the app's own entry point so that TLS, port and worker
+# settings all come from the environment.
+ENTRYPOINT ["ai-gov-server"]

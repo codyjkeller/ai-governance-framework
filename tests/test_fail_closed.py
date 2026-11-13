@@ -26,6 +26,7 @@ def make_settings(tmp_path, **overrides):
     values = {
         "llm_api_key": "sk-test-not-a-real-key-for-unit-tests-only",
         "audit_hmac_key": SIGNING_KEY,
+        "tls_terminated_upstream": True,
         "policy_path": POLICY,
         "audit_log_path": tmp_path / "audit.jsonl",
         "rate_limit": 0,
@@ -71,13 +72,17 @@ class TestStartupChecks:
     def test_normal_start_reports_dev_mode_off(self, tmp_path):
         assert make_client(tmp_path).get("/health").json()["insecure_dev_mode"] is False
 
-    def test_importing_the_server_module_needs_no_configuration(self, monkeypatch):
-        import importlib
+    def test_importing_the_server_module_needs_no_configuration(self):
+        import os
+        import subprocess
+        import sys
 
-        import ai_governance.server as server_module
-
-        monkeypatch.delenv("LLM_API_KEY", raising=False)
-        importlib.reload(server_module)  # would raise if the app were built at import time
+        # A fresh interpreter with no settings at all: the import must not build the app.
+        env = {k: v for k, v in os.environ.items() if k not in {"LLM_API_KEY", "PROXY_API_KEYS"}}
+        result = subprocess.run(
+            [sys.executable, "-c", "import ai_governance.server"], env=env, capture_output=True, text=True, check=False
+        )
+        assert result.returncode == 0, result.stderr
 
     def test_keys_are_read_from_a_comma_separated_env_var(self, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "sk-test-not-a-real-key-for-unit-tests-only")

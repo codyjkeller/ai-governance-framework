@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode
 
 
@@ -32,6 +32,10 @@ class Settings(BaseSettings):
             audit log records who made each request.
         ALLOW_INSECURE_DEV: Set to true to run without the safety checks that
             stop a misconfigured proxy from starting. Local demos only.
+        TLS_CERT_FILE / TLS_KEY_FILE: Certificate and private key. When set,
+            the proxy serves HTTPS itself (TLS 1.2 or newer).
+        TLS_TERMINATED_UPSTREAM: Set to true if a load balancer or ingress in
+            front of the proxy provides HTTPS instead.
         AUDIT_HMAC_KEY: Secret used to sign every audit entry (32+ characters).
         AUDIT_ANCHOR_URL: HTTPS endpoint that receives a copy of the audit
             log's head record after every write.
@@ -91,6 +95,26 @@ class Settings(BaseSettings):
         "Each entry is either 'name:key' or just 'key'.",
     )
 
+    # --- Transport security ---
+    tls_cert_file: Path | None = Field(
+        default=None,
+        description="Path to the TLS certificate (PEM). With TLS_KEY_FILE, makes the proxy serve HTTPS itself.",
+    )
+    tls_key_file: Path | None = Field(
+        default=None,
+        description="Path to the TLS private key (PEM).",
+    )
+    tls_terminated_upstream: bool = Field(
+        default=False,
+        description="Set to true when a load balancer or ingress in front of the proxy provides HTTPS. "
+        "The proxy then accepts plain HTTP from it. Keep that hop on a private network.",
+    )
+
+    # --- Server ---
+    host: str = Field(default="0.0.0.0", description="Address to listen on.")  # noqa: S104 - container default
+    port: int = Field(default=8000, ge=1, le=65535, description="Port to listen on.")
+    workers: int = Field(default=1, ge=1, le=64, description="Number of server worker processes.")
+
     # --- Audit integrity ---
     audit_hmac_key: str = Field(
         default="",
@@ -145,6 +169,39 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [k.strip() for k in v.split(",") if k.strip()]
         return v
+
+    @field_validator("tls_cert_file", "tls_key_file", mode="before")
+    @classmethod
+    def empty_path_is_unset(cls, v: object) -> object:
+        """An empty env var (TLS_CERT_FILE=) means 'not set', not 'the current folder'."""
+        return None if isinstance(v, str) and not v.strip() else v
+
+    @field_validator("llm_api_url")
+    @classmethod
+    def validate_llm_api_url(cls, v: str) -> str:
+        """Prompts must not travel to the provider in clear text."""
+        local = ("http://127.0.0.1", "http://localhost")
+        if not v.startswith("https://") and not v.startswith(local):
+            msg = "LLM_API_URL must start with https://"
+            raise ValueError(msg)
+        return v
+
+    @model_validator(mode="after")
+    def validate_tls_files(self) -> "Settings":
+        """A certificate without its key (or the reverse) cannot serve HTTPS."""
+        if (self.tls_cert_file is None) != (self.tls_key_file is None):
+            msg = "Set both TLS_CERT_FILE and TLS_KEY_FILE, or neither."
+            raise ValueError(msg)
+        for path in (self.tls_cert_file, self.tls_key_file):
+            if path is not None and not path.is_file():
+                msg = f"TLS file not found: {path}"
+                raise ValueError(msg)
+        return self
+
+    @property
+    def serves_tls(self) -> bool:
+        """True when the proxy itself terminates TLS."""
+        return self.tls_cert_file is not None and self.tls_key_file is not None
 
     @field_validator("audit_hmac_key")
     @classmethod

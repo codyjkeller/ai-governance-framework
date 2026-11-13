@@ -32,11 +32,20 @@ services:
       - ENFORCEMENT_MODE=${ENFORCEMENT_MODE:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - RATE_LIMIT=${RATE_LIMIT:-60}
+      - AUDIT_HMAC_KEY=${AUDIT_HMAC_KEY:?Set AUDIT_HMAC_KEY to a random secret of 32+ characters}
+      - AUDIT_ANCHOR_URL=${AUDIT_ANCHOR_URL:-}
+      # HTTPS: either mount a certificate and key (see volumes) and set these two...
+      - TLS_CERT_FILE=${TLS_CERT_FILE:-}
+      - TLS_KEY_FILE=${TLS_KEY_FILE:-}
+      # ...or declare that a load balancer in front of this container provides HTTPS.
+      - TLS_TERMINATED_UPSTREAM=${TLS_TERMINATED_UPSTREAM:-false}
     volumes:
       # Persist audit logs outside the container
       - audit-logs:/app/audit_logs
       # Mount policy file so it can be updated without rebuilding
       - ../policies:/app/policies:ro
+      # Certificate and key for built-in HTTPS, e.g. TLS_CERT_FILE=/app/certs/tls.crt
+      # - ./certs:/app/certs:ro
     restart: unless-stopped
     deploy:
       resources:

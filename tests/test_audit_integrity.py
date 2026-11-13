@@ -227,6 +227,7 @@ class TestServer:
             "rate_limit": 0,
             "proxy_api_keys": ["app:k1"],
             "audit_hmac_key": KEY,
+            "tls_terminated_upstream": True,
         }
         values.update(overrides)
         return Settings(**values)
