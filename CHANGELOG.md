@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fewer false alarms.** "vitamin B12" and "room A10" are no longer redacted as diagnosis codes. Card numbers must pass the Luhn check and DEA numbers their check digit, so ordinary 16-digit numbers are left alone. SSN ranges that are never issued are skipped.
 - **Jira alerts for suppressed replies were never sent**, for the same reason as blocked requests.
 - **The CI security checks could not fail.** Bandit ran with `|| true` and the container scan with exit code 0. Both now fail the build. The Trivy action is pinned to a commit instead of `master`.
+- **Four high-severity vulnerabilities in the Docker image**, found once the container scan could fail: two in zlib and two in the Python packaging tools. The image now applies OS updates at build time and no longer ships setuptools or wheel.
 - **`.secrets.baseline` was missing**, so the detect-secrets pre-commit hook could not run.
 - **The architecture diagram** showed layers that do not exist. It now shows what the code does.
 - **A reply containing only a tool call crashed the proxy** (HTTP 500).
