@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Built-in HTTPS.** With `TLS_CERT_FILE` and `TLS_KEY_FILE` the proxy serves TLS 1.2+ itself, AES-GCM suites only, and rejects plain HTTP. `TLS_TERMINATED_UPSTREAM=true` declares that a load balancer provides HTTPS instead. One of the two is required to start. `LLM_API_URL` must be HTTPS.
+- **Signed audit log.** With `AUDIT_HMAC_KEY` (required) every entry and the head record carry an HMAC-SHA-256 signature, so the log cannot be rewritten by someone who can only write files.
+- **Audit anchoring.** `AUDIT_ANCHOR_URL` receives the head record after every write. `/admin/audit/verify?anchor_entries=&anchor_hash=` checks any stored anchor against the log, which proves whether entries were removed or an older log was put back.
+- **Control mapping** for NIST SP 800-53 Rev. 5, SOC 2, HIPAA, CJIS v6.1 and GovRAMP in `docs/COMPLIANCE_MAPPING.md`.
+- `HOST`, `PORT` and `WORKERS` settings. The Docker image now starts through `ai-gov-server`, so all settings come from the environment.
+
 ### Security
 - **Every message is scanned.** Previously only the last message was checked, so sensitive data in an earlier turn or in the system prompt was forwarded upstream untouched.
 - **The proxy fails closed.** It refuses to start without `PROXY_API_KEYS`, or with a missing or invalid policy file (including a misspelled action such as `BLOK` or a rule name that matches no pattern). It refuses any request whose audit entry cannot be written (HTTP 503). `ALLOW_INSECURE_DEV=true` relaxes the startup checks for local demos.
@@ -23,12 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rate limits are counted per API key**, not per client IP, and each app instance has its own limiter.
 - **Importing `ai_governance.server` no longer builds the app** or requires configuration.
 - **Tests no longer call the real OpenAI API.**
+- **Jira alerts for blocked requests were never sent.** The alert was queued and then discarded when the request was rejected.
 
 ### Changed
 - **Test tooling:** pytest 9, to clear a published advisory in pytest 8 that was failing the dependency audit.
 
 ### Upgrade notes
-- Set `PROXY_API_KEYS` before upgrading, or the proxy will not start.
+- Set `PROXY_API_KEYS`, `AUDIT_HMAC_KEY`, and either the TLS files or `TLS_TERMINATED_UPSTREAM=true` before upgrading, or the proxy will not start.
 - An audit log written by 3.0.0 has no head record. `/admin/audit/verify` reports it as invalid until the proxy writes its next entry, which creates the record.
 
 ## [3.0.0] - 2026-02-20

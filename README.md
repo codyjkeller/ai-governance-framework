@@ -1,10 +1,10 @@
 # Enterprise AI Governance Framework
 
-**Policy-as-Code governance proxy for securely adopting Enterprise Generative AI (LLMs) in regulated environments (CJIS, HIPAA).**
+**Policy-as-Code governance proxy for securely adopting Enterprise Generative AI (LLMs) in regulated environments. Its safeguards are mapped to NIST SP 800-53 Rev. 5, SOC 2, HIPAA, CJIS v6.1 and GovRAMP in [docs/COMPLIANCE_MAPPING.md](docs/COMPLIANCE_MAPPING.md).**
 
 ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
-![Compliance](https://img.shields.io/badge/Compliance-HIPAA%20%7C%20NIST-blue)
+![Control mapping](https://img.shields.io/badge/Mapped_to-NIST_800--53_%7C_SOC_2_%7C_HIPAA_%7C_CJIS_%7C_GovRAMP-blue)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 ---
@@ -22,9 +22,10 @@ This framework acts as a **Governance Proxy** a FastAPI middleware layer that si
 - **Policy-as-Code:** DLP rules defined in YAML (`policies/generative_ai_aup.yaml`), updatable by GRC teams without code changes.
 - **Model Allowlisting:** Only approved model families (defined in YAML) can be used. Unapproved models are rejected.
 - **Authentication & Rate Limiting:** API key auth via `X-Governance-API-Key` header. Each key has a name, and that name is what the audit log records. Rate limiting is per API key.
-- **Fails Closed:** The proxy refuses to start without API keys or with a missing or invalid policy file, and refuses any request it cannot write to the audit log.
+- **Fails Closed:** The proxy refuses to start without API keys, TLS, an audit signing key, or a valid policy file, and refuses any request it cannot write to the audit log.
+- **Built-in HTTPS:** Give it a certificate and key and it serves TLS 1.2+ itself, with AES-GCM suites only. Or declare that a load balancer in front of it does.
 - **Monitoring Mode:** Deploy in log-only mode to observe violations before switching to enforcement. Nothing is blocked or altered; the audit log records what would have happened.
-- **Tamper-Evident Audit Logging:** SHA-256 hash-chained JSONL logs, safe with several server workers. Verification detects changed entries and entries deleted from the end of the log.
+- **Signed, Anchored Audit Logging:** Hash-chained JSONL entries, each signed with a secret key, safe with several server workers. The newest log state can be copied to another system after every write, so deleted entries or a restored older log are provable.
 - **Smart Remediation:**
   - **BLOCK:** Stops the request entirely for critical data (SSN, secrets).
   - **REDACT:** Masks lower-risk data (emails, IPs) and forwards the sanitized prompt.
@@ -51,6 +52,19 @@ export LLM_API_KEY="sk-your-openai-key"
 #   python -c "import secrets; print(secrets.token_urlsafe(32))"
 export PROXY_API_KEYS="billing-app:my-api-key-1,support-bot:my-api-key-2"
 
+# Required — signs every audit entry so the log cannot be rewritten. Generate with:
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+export AUDIT_HMAC_KEY="a-long-random-secret"
+
+# Required — HTTPS. Either give the proxy a certificate and key...
+export TLS_CERT_FILE="/path/to/tls.crt"
+export TLS_KEY_FILE="/path/to/tls.key"
+# ...or, if a load balancer in front of it provides HTTPS:
+# export TLS_TERMINATED_UPSTREAM=true
+
+# Recommended — copy the audit log's state to a system this host cannot change
+export AUDIT_ANCHOR_URL="https://your-siem.example.com/collector"
+
 # Optional — Jira integration
 export JIRA_WEBHOOK="https://automation.atlassian.com/pro/hooks/..."
 ```
@@ -58,12 +72,14 @@ export JIRA_WEBHOOK="https://automation.atlassian.com/pro/hooks/..."
 ### 3. Run the Server
 
 ```bash
-make run
-# Server at http://0.0.0.0:8000
-# Docs at http://0.0.0.0:8000/docs
+make serve
+# Server at https://<host>:8000
+# Docs at https://<host>:8000/docs
 ```
 
-The proxy will not start without `PROXY_API_KEYS`. To try it on your own machine without keys, set `ALLOW_INSECURE_DEV=true`. Never set that where real data is involved: it also lets the proxy start with a missing or broken policy file.
+The proxy will not start unless `PROXY_API_KEYS`, `AUDIT_HMAC_KEY` and a TLS choice are set, and the policy file is valid.
+
+**Just trying it on your own machine?** `make run` starts it with `ALLOW_INSECURE_DEV=true`: plain HTTP on localhost, no keys, unsigned audit log. Never use that where real data is involved. `/health` shows when it is on.
 
 ### 4. Send a Test Request
 
@@ -137,7 +153,12 @@ Every decision (BLOCK, REDACT, CLEAN) is recorded in the tamper-evident audit lo
 | `LLM_API_KEY` | **Yes** | — | Upstream LLM provider API key |
 | `LLM_API_URL` | No | `https://api.openai.com/v1/chat/completions` | Upstream endpoint |
 | `PROXY_API_KEYS` | **Yes** | — | Comma-separated keys that callers use, each written as `name:key`. The name is recorded in the audit log. A bare `key` also works and is logged as `key-<hash>`. |
-| `ALLOW_INSECURE_DEV` | No | `false` | Local demos only. Lets the proxy start without `PROXY_API_KEYS` and fall back to a built-in policy if the policy file is missing or invalid. Shown on `/health`. |
+| `AUDIT_HMAC_KEY` | **Yes** | — | Secret that signs every audit entry and the head record. At least 32 characters. Keep it in a secrets manager, never beside the log. |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | **Yes**, or the next row | — | Certificate and private key (PEM). The proxy then serves HTTPS itself: TLS 1.2+, AES-GCM suites only. |
+| `TLS_TERMINATED_UPSTREAM` | **Yes**, or the row above | `false` | Set to `true` when a load balancer or ingress in front of the proxy provides HTTPS. Keep the hop between them on a private network. |
+| `AUDIT_ANCHOR_URL` | Recommended | *(empty = off)* | HTTPS endpoint that receives the audit log's head record (entry count, newest hash, signature) after every write. |
+| `ALLOW_INSECURE_DEV` | No | `false` | Local demos only. Lets the proxy start without keys, TLS or a signing key, and fall back to a built-in policy if the policy file is missing or invalid. Shown on `/health`. |
+| `HOST`, `PORT`, `WORKERS` | No | `0.0.0.0`, `8000`, `1` | Listen address, port and worker count when started with `ai-gov-server`. The Docker image sets `WORKERS=4`. |
 | `JIRA_WEBHOOK` | No | *(empty = disabled)* | Jira automation webhook URL |
 | `ENFORCEMENT_MODE` | No | *(uses YAML value)* | Override: `blocking` or `monitoring` |
 | `RATE_LIMIT` | No | `60` | Max requests/minute per API key (0 = disabled). Counted separately in each server worker. |
@@ -158,7 +179,8 @@ ai-governance-framework/
 │   │   ├── input_scanner.py  # Layer 1: Prompt scanner
 │   │   └── output_scanner.py # Layer 5: Response scanner
 │   ├── policy/loader.py      # YAML policy loader
-│   ├── audit/logger.py       # Hash-chained audit logger
+│   ├── audit/logger.py       # Hash-chained, signed audit logger
+│   ├── audit/anchor.py       # Copies the log's state to another system
 │   ├── integrations/         # Jira, LLM client
 │   └── cli/demo.py           # Rich CLI demo (optional)
 ├── tests/                    # Test suite
@@ -193,8 +215,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 ## Known Limitations
 
 - **Regex-only detection.** The scanner will miss encoded, obfuscated, or context-dependent sensitive data. See `scanning/patterns.py` for per-pattern false-positive/false-negative documentation. NER model integration (e.g., Presidio) is planned.
-- **No TLS built in.** Deploy behind a reverse proxy (nginx, Traefik, Envoy) for TLS termination in production.
-- **Audit logs are tamper-evident, not immutable.** Hash chaining detects modification after the fact, and a head record beside the log detects entries deleted from the end. Someone able to rewrite both files can still hide a deletion. For true immutability, ship logs to S3 with Object Lock or a SIEM.
+- **Cryptography is not FIPS validated by default.** TLS and audit signatures use the OpenSSL that Python is linked against. For CJIS or GovRAMP, run on a FIPS 140-3 validated OpenSSL or terminate TLS on a validated load balancer. See [docs/COMPLIANCE_MAPPING.md](docs/COMPLIANCE_MAPPING.md).
+- **The audit log is only as safe as its key and its anchor.** Without the signing key nobody can alter or remove entries undetected. Someone who holds the key can, unless `AUDIT_ANCHOR_URL` points at a system they cannot change. Set it in production.
+- **No log retention or rotation.** The proxy appends to one file. Archive and expire it to match your retention policy.
 - **The `user_id` field in a request is not verified.** The audit log records the owner of the API key as `user_id` and stores the caller-supplied value separately as `client_user_id`.
 - **Rate limits are per worker.** With four workers, a key can make up to four times `RATE_LIMIT` requests per minute. Use a shared store or your gateway's rate limiting if you need an exact limit.
 - **Not yet a full drop-in for the OpenAI API.** Only `model`, `messages` and `temperature` are forwarded. Tools, streaming and list-style message content are not supported yet.

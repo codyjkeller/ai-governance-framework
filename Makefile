@@ -26,8 +26,11 @@ security: ## Run security scans (Bandit + pip-audit)
 	bandit -r src/ai_governance/
 	pip-audit --strict
 
-run: ## Start the governance proxy server locally
-	uvicorn ai_governance.server:app --host 0.0.0.0 --port 8000 --reload
+run: ## Start the proxy for local development (no TLS or keys required; never use with real data)
+	ALLOW_INSECURE_DEV=true uvicorn ai_governance.server:app --host 127.0.0.1 --port 8000 --reload
+
+serve: ## Start the proxy the way production does (needs PROXY_API_KEYS, AUDIT_HMAC_KEY and TLS settings)
+	ai-gov-server
 
 demo: ## Run the CLI demo
 	python -m ai_governance.cli.demo

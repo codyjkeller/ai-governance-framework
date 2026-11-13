@@ -2,7 +2,8 @@
 
 This is the main application entrypoint. It:
 - Validates configuration at startup and refuses to start if it is unsafe
-  (no API keys, or a missing or invalid policy file)
+  (no API keys, no TLS, no audit signing key, or a missing or invalid policy file)
+- Serves HTTPS itself (TLS 1.2+) when given a certificate and key
 - Authenticates requests via API key header
 - Rate limits per API key (per client IP for requests without a valid key)
 - Enforces model allowlisting from the YAML policy
@@ -20,12 +21,13 @@ import uuid
 from typing import Any
 
 import structlog
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from ai_governance.audit.anchor import AnchorPublisher
 from ai_governance.audit.logger import AuditLogger, AuditWriteError
 from ai_governance.config import Settings, get_settings
 from ai_governance.integrations.jira import notify_jira
@@ -112,6 +114,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "For a local demo only, set ALLOW_INSECURE_DEV=true."
         )
         raise ConfigurationError(msg)
+    if not settings.serves_tls and not settings.tls_terminated_upstream and not settings.allow_insecure_dev:
+        msg = (
+            "No TLS is configured, so prompts and API keys would cross the network in clear text. "
+            "Set TLS_CERT_FILE and TLS_KEY_FILE to have the proxy serve HTTPS, or set "
+            "TLS_TERMINATED_UPSTREAM=true if a load balancer or ingress in front of it provides HTTPS. "
+            "For a local demo only, set ALLOW_INSECURE_DEV=true."
+        )
+        raise ConfigurationError(msg)
+    if not settings.audit_hmac_key and not settings.allow_insecure_dev:
+        msg = (
+            "AUDIT_HMAC_KEY is not set, so audit entries would be unsigned and anyone who can write "
+            "the log file could rewrite it without detection. Set AUDIT_HMAC_KEY to a random secret "
+            'of 32+ characters (python -c "import secrets; print(secrets.token_urlsafe(48))"). '
+            "For a local demo only, set ALLOW_INSECURE_DEV=true."
+        )
+        raise ConfigurationError(msg)
     if settings.allow_insecure_dev:
         logger.warning(
             "insecure_dev_mode",
@@ -128,7 +146,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Initialize components
     input_scanner = InputScanner(policy)
     output_scanner = OutputScanner(policy)
-    auditor = AuditLogger(settings.audit_log_path)
+    anchor = AnchorPublisher(settings.audit_anchor_url) if settings.audit_anchor_url else None
+    if anchor is None and not settings.allow_insecure_dev:
+        logger.warning(
+            "audit_anchor_not_configured",
+            detail="AUDIT_ANCHOR_URL is not set. Without a copy of the audit head record stored on "
+            "another system, restoring an older copy of the log cannot be detected after a restart.",
+        )
+    auditor = AuditLogger(
+        settings.audit_log_path,
+        hmac_key=settings.audit_hmac_key or None,
+        on_head=anchor.submit if anchor else None,
+    )
 
     # Build app
     app = FastAPI(
@@ -163,6 +192,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"detail": "Rate limit exceeded. Please slow down."},
         )
 
+    if settings.serves_tls:
+
+        @app.middleware("http")
+        async def require_https(request: Request, call_next: Any) -> Any:
+            # main() only opens an HTTPS listener. This catches the proxy being
+            # started some other way that leaves a plain HTTP port open.
+            if request.url.scheme != "https":
+                return JSONResponse(status_code=400, content={"detail": "HTTPS is required."})
+            response = await call_next(request)
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
+            return response
+
     @app.exception_handler(AuditWriteError)
     async def audit_failure_handler(request: Request, exc: AuditWriteError) -> JSONResponse:
         # Fail closed: a request that cannot be audited does not go through.
@@ -182,30 +223,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "enforcement_mode": enforcement_mode,
             "policy_version": policy_version,
             "insecure_dev_mode": settings.allow_insecure_dev,
+            "tls": "native" if settings.serves_tls else "upstream" if settings.tls_terminated_upstream else "none",
+            "audit_signing": bool(settings.audit_hmac_key),
+            "audit_anchor": anchor.status() if anchor else {"configured": False},
         }
 
     # --- Audit log verification ---
     @app.get("/admin/audit/verify")
-    async def verify_audit_log(request: Request) -> dict[str, Any]:
+    async def verify_audit_log(
+        request: Request,
+        anchor_entries: int | None = Query(default=None, ge=1),
+        anchor_hash: str | None = Query(default=None, min_length=64, max_length=64),
+    ) -> dict[str, Any]:
         """Verify the integrity of the audit log chain.
 
         Requires authentication (same API key header as the main endpoint).
+
+        To prove nothing was removed since a given moment, pass the `entries`
+        and `last_hash` from a head record that was stored on another system
+        as `anchor_entries` and `anchor_hash`. The reply then includes
+        `anchor_found`: false means the log no longer contains that state.
         """
         _authenticate(request, key_identities)
         is_valid, count = auditor.verify_chain()
-        return {
+        result: dict[str, Any] = {
             "chain_valid": is_valid,
             "entries_verified": count,
         }
+        if anchor_entries is not None and anchor_hash is not None:
+            result["anchor_found"] = auditor.verify_anchor(anchor_entries, anchor_hash)
+        return result
 
     # --- Main proxy endpoint ---
-    @app.post("/v1/chat/completions")
+    @app.post("/v1/chat/completions", response_model=None)
     @limiter.limit(lambda: f"{settings.rate_limit}/minute" if settings.rate_limit > 0 else "9999/minute")
     async def proxy_chat_completion(
         request: Request,
         chat_request: ChatRequest,
         background_tasks: BackgroundTasks,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | JSONResponse:
         """Governance-proxied chat completion.
 
         1. Authenticate the request
@@ -275,9 +331,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 violation_types,
             )
             if not is_monitoring:
-                raise HTTPException(
+                # Returned, not raised: background tasks attached to a raised
+                # HTTPException never run, so the Jira alert was never sent.
+                return JSONResponse(
                     status_code=403,
-                    detail="Request blocked by AI Acceptable Use Policy.",
+                    content={"detail": "Request blocked by AI Acceptable Use Policy."},
+                    background=background_tasks,
                 )
 
         # --- Layer 2: Upstream LLM call ---
@@ -389,8 +448,29 @@ def main() -> None:
     settings = get_settings()
     uvicorn.run(
         "ai_governance.server:app",
-        host="0.0.0.0",  # noqa: S104 - Intentional: server must bind to all interfaces
-        port=8000,
+        host=settings.host,
+        port=settings.port,
+        workers=settings.workers,
         log_level=settings.log_level.lower(),
         reload=False,
+        **tls_options(settings),
     )
+
+
+# TLS 1.2 cipher suites offered when the proxy serves HTTPS itself: forward
+# secrecy (ECDHE) with AES-GCM only. TLS 1.3 suites are chosen by OpenSSL.
+TLS_CIPHERS = "ECDHE+AESGCM"
+
+
+def tls_options(settings: Settings) -> dict[str, Any]:
+    """Uvicorn options for HTTPS. Empty when TLS is handled in front of the proxy.
+
+    Python refuses TLS 1.0 and 1.1 by default, so the minimum is TLS 1.2.
+    """
+    if not settings.serves_tls:
+        return {}
+    return {
+        "ssl_certfile": str(settings.tls_cert_file),
+        "ssl_keyfile": str(settings.tls_key_file),
+        "ssl_ciphers": TLS_CIPHERS,
+    }

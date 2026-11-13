@@ -68,6 +68,8 @@ def test_settings(tmp_path):
     """Settings configured for testing (no real API key needed for unit tests)."""
     return Settings(
         llm_api_key="sk-test-not-a-real-key-for-unit-tests-only",
+        audit_hmac_key="test-signing-key-not-a-real-secret-000000",
+        tls_terminated_upstream=True,
         llm_api_url="https://api.openai.com/v1/chat/completions",
         policy_path=Path(__file__).parent.parent / "policies" / "generative_ai_aup.yaml",
         audit_log_path=tmp_path / "test_audit.jsonl",

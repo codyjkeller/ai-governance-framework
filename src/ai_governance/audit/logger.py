@@ -18,17 +18,26 @@ Two additions make the chain hold up in practice:
   and the hash of the newest one. Deleting entries from the end of the log
   leaves the chain itself intact, and the head record is what exposes it.
 
-The head record is also written to the application log on every entry.
-Someone who can rewrite both local files can still hide a deletion, so
-ship the application log off the machine if you need a stronger anchor.
+Hashes alone can be recomputed by anyone who can write the files, so two
+further protections close that gap:
+
+- Signing. With a secret key (AUDIT_HMAC_KEY) every entry and the head
+  record carry an HMAC. Without the key nobody can produce a valid entry
+  or a valid head record, so rewriting both files no longer works.
+- Anchoring. The newest head record can be sent to another system after
+  every write (see anchor.py). A copy held somewhere the proxy host cannot
+  change is what defeats the remaining trick: putting back an older, validly
+  signed log and head record. verify_anchor() checks any stored copy
+  against the log.
 """
 
 import hashlib
+import hmac
 import json
 import logging
 import os
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,7 +65,24 @@ class AuditLogger:
 
     GENESIS_HASH = "0" * 64  # SHA-256 of "nothing" — the start of the chain
 
-    def __init__(self, log_path: Path) -> None:
+    def __init__(
+        self,
+        log_path: Path,
+        hmac_key: str | None = None,
+        on_head: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
+        """Create a logger.
+
+        Args:
+            log_path: The JSONL file to append to.
+            hmac_key: Secret used to sign entries and the head record. Keep it
+                out of the log directory. None leaves the log unsigned.
+            on_head: Called with the new head record after every write, for
+                sending a copy to another system.
+        """
+        self._key = hmac_key.encode("utf-8") if hmac_key else None
+        self._on_head = on_head
+        self._highest_seen = 0  # Most entries this process has ever seen in the log
         self.log_path = log_path
         self.head_path = log_path.with_name(log_path.name + ".head")
         self._lock_path = log_path.with_name(log_path.name + ".lock")
@@ -94,12 +120,38 @@ class AuditLogger:
                     return lines[-1].decode("utf-8").strip() if lines else ""
                 window *= 2
 
+    def _mac(self, text: str) -> str:
+        """Sign text with the secret key."""
+        if self._key is None:  # pragma: no cover - callers check first
+            msg = "No signing key is configured."
+            raise ValueError(msg)
+        return hmac.new(self._key, text.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def _head_mac(self, entries: int, last_hash: str) -> str:
+        return self._mac(f"head:{entries}:{last_hash}")
+
+    def _entry_is_signed_correctly(self, entry: dict[str, Any]) -> bool:
+        """Check an entry's signature. The signature covers every other field."""
+        unsigned = {k: v for k, v in entry.items() if k != "mac"}
+        expected = self._mac(json.dumps(unsigned, separators=(",", ":")))
+        return hmac.compare_digest(str(entry.get("mac", "")), expected)
+
     def _read_head(self) -> tuple[int, str] | None:
-        """Return (entry count, newest hash) from the head record, or None if absent."""
+        """Return (entry count, newest hash) from the head record, or None if absent.
+
+        Raises:
+            ValueError: If signing is on and the head record's signature is wrong.
+        """
         if not self.head_path.exists():
             return None
         head = json.loads(self.head_path.read_text())
-        return int(head["entries"]), str(head["last_hash"])
+        entries, last_hash = int(head["entries"]), str(head["last_hash"])
+        if self._key is not None and not hmac.compare_digest(
+            str(head.get("mac", "")), self._head_mac(entries, last_hash)
+        ):
+            msg = "The audit head record is not signed with the configured key."
+            raise ValueError(msg)
+        return entries, last_hash
 
     def _count_entries(self) -> int:
         if not self.log_path.exists():
@@ -109,18 +161,32 @@ class AuditLogger:
 
     def _entries_before_write(self, last_line: str) -> int:
         """Work out how many entries exist, and refuse to continue if the log was altered."""
+        count = self._entries_from_head(last_line)
+        if count < self._highest_seen:
+            # This process has already seen a longer log. A shorter one with a
+            # valid head record means an older copy was put back.
+            msg = "The audit log is shorter than it was. An older copy may have been restored."
+            raise AuditWriteError(msg)
+        return count
+
+    def _entries_from_head(self, last_line: str) -> int:
+        try:
+            last_entry = json.loads(last_line) if last_line else {}
+        except json.JSONDecodeError:
+            last_entry = {}
+
         head = self._read_head()
         if head is None:
+            if self._key is not None and "mac" in last_entry:
+                # A signed log always has a head record. Its absence means it was removed.
+                msg = "The audit head record is missing."
+                raise AuditWriteError(msg)
             return self._count_entries()  # First write, or a log from before head records existed
         head_count, head_hash = head
         last_hash = self._hash_entry(last_line) if last_line else self.GENESIS_HASH
         if head_hash == last_hash:
             return head_count
-        try:
-            previous = json.loads(last_line).get("prev_hash") if last_line else None
-        except json.JSONDecodeError:
-            previous = None
-        if previous == head_hash:
+        if last_entry.get("prev_hash") == head_hash:
             # A crash between writing an entry and updating the head record.
             return head_count + 1
         msg = "The audit log does not match its head record. Entries may have been removed or changed."
@@ -195,6 +261,9 @@ class AuditLogger:
                 }
                 if client_user_id is not None:
                     entry["client_user_id"] = client_user_id
+                if self._key is not None:
+                    # Added last: the signature covers every field above it.
+                    entry["mac"] = self._mac(json.dumps(entry, separators=(",", ":")))
 
                 entry_json = json.dumps(entry, separators=(",", ":"))
                 with open(self.log_path, "a") as f:
@@ -203,19 +272,26 @@ class AuditLogger:
                     os.fsync(f.fileno())
 
                 self._prev_hash = self._hash_entry(entry_json)
-                self._write_head(count + 1, self._prev_hash)
+                head = self._write_head(count + 1, self._prev_hash)
+                self._highest_seen = count + 1
         except (OSError, ValueError, KeyError) as e:
             logger.error("Failed to write audit log: %s", e)
             msg = "The audit entry could not be written."
             raise AuditWriteError(msg) from e
 
-        logger.info("audit_head entries=%d last_hash=%s", count + 1, self._prev_hash)
+        logger.info("audit_head entries=%d last_hash=%s", head["entries"], head["last_hash"])
+        if self._on_head is not None:
+            self._on_head({**head, "timestamp": entry["timestamp"]})
 
-    def _write_head(self, entries: int, last_hash: str) -> None:
+    def _write_head(self, entries: int, last_hash: str) -> dict[str, Any]:
         """Replace the head record in one step, so it is never left half written."""
+        head: dict[str, Any] = {"entries": entries, "last_hash": last_hash}
+        if self._key is not None:
+            head["mac"] = self._head_mac(entries, last_hash)
         temporary = self.head_path.with_name(self.head_path.name + ".tmp")
-        temporary.write_text(json.dumps({"entries": entries, "last_hash": last_hash}))
+        temporary.write_text(json.dumps(head))
         os.replace(temporary, self.head_path)
+        return head
 
     @staticmethod
     def _hash_entry(entry_json: str) -> str:
@@ -229,7 +305,9 @@ class AuditLogger:
         matches the hash of the preceding entry.
 
         It then compares the result with the head record, which catches
-        entries deleted from the end of the log.
+        entries deleted from the end of the log. When a signing key is
+        configured, every entry's signature and the head record's signature
+        are checked as well.
 
         Returns:
             Tuple of (is_valid, entries_checked).
@@ -247,6 +325,7 @@ class AuditLogger:
 
         prev_hash = self.GENESIS_HASH
         count = 0
+        seen_signed = False
 
         with open(self.log_path) as f:
             for line_num, line in enumerate(f, start=1):
@@ -268,6 +347,18 @@ class AuditLogger:
                         str(entry.get("prev_hash", ""))[:16] + "...",
                     )
                     return False, count
+
+                if self._key is not None:
+                    # Entries written before signing was turned on have no signature.
+                    # After the first signed entry, every entry must be signed.
+                    if "mac" in entry:
+                        seen_signed = True
+                        if not self._entry_is_signed_correctly(entry):
+                            logger.error("Audit entry at line %d has an invalid signature.", line_num)
+                            return False, count
+                    elif seen_signed:
+                        logger.error("Audit entry at line %d is not signed.", line_num)
+                        return False, count
 
                 prev_hash = self._hash_entry(stripped)
                 count += 1
@@ -292,3 +383,27 @@ class AuditLogger:
             return False, count
 
         return True, count
+
+    def verify_anchor(self, entries: int, last_hash: str) -> bool:
+        """Check that a head record saved elsewhere still matches this log.
+
+        Give it the entry count and hash from any copy of the head record that
+        was stored outside this machine. It returns True only if the log still
+        has that many entries and entry number `entries` has that hash. A log
+        that was cut back, or replaced with an older copy, fails.
+        """
+        if entries < 1:
+            return False
+        with self._locked():
+            if not self.log_path.exists():
+                return False
+            count = 0
+            with open(self.log_path) as f:
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    count += 1
+                    if count == entries:
+                        return hmac.compare_digest(self._hash_entry(stripped), last_hash)
+        return False
