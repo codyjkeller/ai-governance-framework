@@ -46,6 +46,7 @@ class InputScanner(BaseScanner):
         violations: list[dict[str, Any]] = []
         modified_text = text
         is_blocked = False
+        is_redacted = False
 
         for pattern_key, pattern_def in INPUT_PATTERNS.items():
             rule = get_data_rule(self.policy, pattern_key)
@@ -79,19 +80,24 @@ class InputScanner(BaseScanner):
                     action,
                 )
 
-                if action == "BLOCK":
-                    is_blocked = True
-                elif action == "REDACT":
+                if action == "REDACT":
                     modified_text = modified_text.replace(match_value, f"[{pattern_def.name}_REDACTED]")
+                    is_redacted = True
+                elif action != "ALLOW":
+                    # BLOCK, and anything unrecognized. An action the scanner does not
+                    # know (for example a typo in the policy) must never let data through.
+                    is_blocked = True
                 # ALLOW = do nothing
 
         if is_blocked:
             return ScanResult(status="BLOCKED", text=None, violations=violations)
 
-        if violations:
+        if is_redacted:
             return ScanResult(status="REDACTED", text=modified_text, violations=violations)
 
-        return ScanResult(status="CLEAN", text=text, violations=[])
+        # Nothing matched, or only ALLOW rules matched: the text is unchanged.
+        # ALLOW matches are still returned so they can be recorded.
+        return ScanResult(status="CLEAN", text=text, violations=violations)
 
 
 def _mask_for_logging(value: str) -> str:

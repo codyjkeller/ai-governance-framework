@@ -3,9 +3,8 @@
 Tests the full request lifecycle through the proxy including
 authentication, model allowlisting, input scanning, and health check.
 
-NOTE: These tests do NOT call the real upstream LLM. They test
-the governance layers only. The upstream call would need to be
-mocked for integration tests (future work).
+NOTE: These tests do NOT call the real upstream LLM. The `upstream`
+fixture in conftest.py replaces it with a stand-in for every test.
 """
 
 
@@ -42,11 +41,7 @@ class TestAuthentication:
         assert response.status_code == 401
 
     def test_accepts_valid_api_key(self, test_client):
-        """With a valid key, the request gets past auth.
-
-        It will still fail because we're not mocking the upstream LLM,
-        but it should fail with a 502 (upstream error) not a 401.
-        """
+        """With a valid key, the request gets past auth and is answered."""
         response = test_client.post(
             "/v1/chat/completions",
             json={
@@ -55,8 +50,7 @@ class TestAuthentication:
             },
             headers={"X-Governance-API-Key": "test-key-12345"},
         )
-        # Should get past auth — expect 502 because upstream is not mocked
-        assert response.status_code != 401
+        assert response.status_code == 200
 
 
 class TestModelAllowlist:

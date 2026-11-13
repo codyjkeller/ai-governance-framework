@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Every message is scanned.** Previously only the last message was checked, so sensitive data in an earlier turn or in the system prompt was forwarded upstream untouched.
+- **The proxy fails closed.** It refuses to start without `PROXY_API_KEYS`, or with a missing or invalid policy file (including a misspelled action such as `BLOK` or a rule name that matches no pattern). It refuses any request whose audit entry cannot be written (HTTP 503). `ALLOW_INSECURE_DEV=true` relaxes the startup checks for local demos.
+- **Unknown policy actions block.** An action the scanner does not recognize is treated as BLOCK instead of letting the data through.
+- **Audit identity comes from the API key.** Keys are written as `name:key`; the name is recorded as `user_id`. The `user_id` in the request body is unverified and is now stored separately as `client_user_id`.
+- **API keys are compared in constant time.**
+
+### Fixed
+- **`PROXY_API_KEYS` could not be set from an environment variable.** A comma-separated value stopped the server at startup, so the documented way to turn on authentication did not work.
+- **Audit chain with several workers.** Each worker kept its own copy of the last hash, so the shipped four-worker Docker setup produced a chain that failed verification. Writers now take a file lock and read the end of the file on every write.
+- **Deleted audit entries are detected.** A head record beside the log stores the entry count and newest hash; verification fails if entries were removed from the end, and the logger refuses to write to a log that does not match its head record.
+- **Monitoring mode is log-only.** It no longer rewrites prompts or replaces responses. Entries carry `"enforced": false`.
+- **A match on an ALLOW rule no longer reports the prompt as REDACTED.**
+- **Rate limits are counted per API key**, not per client IP, and each app instance has its own limiter.
+- **Importing `ai_governance.server` no longer builds the app** or requires configuration.
+- **Tests no longer call the real OpenAI API.**
+
+### Upgrade notes
+- Set `PROXY_API_KEYS` before upgrading, or the proxy will not start.
+- An audit log written by 3.0.0 has no head record. `/admin/audit/verify` reports it as invalid until the proxy writes its next entry, which creates the record.
+
 ## [3.0.0] - 2026-02-20
 
 ### Added

@@ -17,13 +17,14 @@ This framework acts as a **Governance Proxy** a FastAPI middleware layer that si
 
 ## Features
 
-- **Multi-Domain Scanning:** Regex-based detection for PII, Medical Data (HIPAA), and DevOps Secrets (AWS Keys, private keys, API tokens).
+- **Multi-Domain Scanning:** Regex-based detection for PII, Medical Data (HIPAA), and DevOps Secrets (AWS Keys, private keys, API tokens). Every message in the conversation is scanned, including earlier turns and the system prompt.
 - **Real-Time API Proxy:** Drop-in replacement for OpenAI's `/v1/chat/completions` endpoint with governance enforcement.
 - **Policy-as-Code:** DLP rules defined in YAML (`policies/generative_ai_aup.yaml`), updatable by GRC teams without code changes.
 - **Model Allowlisting:** Only approved model families (defined in YAML) can be used. Unapproved models are rejected.
-- **Authentication & Rate Limiting:** API key auth via `X-Governance-API-Key` header. Per-client rate limiting.
-- **Monitoring Mode:** Deploy in log-only mode to observe violations before switching to enforcement.
-- **Tamper-Evident Audit Logging:** SHA-256 hash-chained JSONL logs. Built-in chain verification endpoint.
+- **Authentication & Rate Limiting:** API key auth via `X-Governance-API-Key` header. Each key has a name, and that name is what the audit log records. Rate limiting is per API key.
+- **Fails Closed:** The proxy refuses to start without API keys or with a missing or invalid policy file, and refuses any request it cannot write to the audit log.
+- **Monitoring Mode:** Deploy in log-only mode to observe violations before switching to enforcement. Nothing is blocked or altered; the audit log records what would have happened.
+- **Tamper-Evident Audit Logging:** SHA-256 hash-chained JSONL logs, safe with several server workers. Verification detects changed entries and entries deleted from the end of the log.
 - **Smart Remediation:**
   - **BLOCK:** Stops the request entirely for critical data (SSN, secrets).
   - **REDACT:** Masks lower-risk data (emails, IPs) and forwards the sanitized prompt.
@@ -42,11 +43,13 @@ pip install -e ".[dev,cli]"
 ### 2. Configure Environment
 
 ```bash
-# Required
+# Required — your upstream LLM provider key
 export LLM_API_KEY="sk-your-openai-key"
 
-# Optional — enable proxy authentication
-export PROXY_API_KEYS="my-api-key-1,my-api-key-2"
+# Required — keys your own apps use to call this proxy, written as name:key.
+# The name is what appears in the audit log. Generate a key with:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+export PROXY_API_KEYS="billing-app:my-api-key-1,support-bot:my-api-key-2"
 
 # Optional — Jira integration
 export JIRA_WEBHOOK="https://automation.atlassian.com/pro/hooks/..."
@@ -59,6 +62,8 @@ make run
 # Server at http://0.0.0.0:8000
 # Docs at http://0.0.0.0:8000/docs
 ```
+
+The proxy will not start without `PROXY_API_KEYS`. To try it on your own machine without keys, set `ALLOW_INSECURE_DEV=true`. Never set that where real data is involved: it also lets the proxy start with a missing or broken policy file.
 
 ### 4. Send a Test Request
 
@@ -82,6 +87,7 @@ make demo
 
 ```bash
 export LLM_API_KEY="sk-your-key"
+export PROXY_API_KEYS="billing-app:my-api-key-1"
 make docker-build
 make docker-up
 ```
@@ -130,10 +136,11 @@ Every decision (BLOCK, REDACT, CLEAN) is recorded in the tamper-evident audit lo
 |---|---|---|---|
 | `LLM_API_KEY` | **Yes** | — | Upstream LLM provider API key |
 | `LLM_API_URL` | No | `https://api.openai.com/v1/chat/completions` | Upstream endpoint |
-| `PROXY_API_KEYS` | No | *(empty = auth disabled)* | Comma-separated API keys for proxy authentication |
+| `PROXY_API_KEYS` | **Yes** | — | Comma-separated keys that callers use, each written as `name:key`. The name is recorded in the audit log. A bare `key` also works and is logged as `key-<hash>`. |
+| `ALLOW_INSECURE_DEV` | No | `false` | Local demos only. Lets the proxy start without `PROXY_API_KEYS` and fall back to a built-in policy if the policy file is missing or invalid. Shown on `/health`. |
 | `JIRA_WEBHOOK` | No | *(empty = disabled)* | Jira automation webhook URL |
 | `ENFORCEMENT_MODE` | No | *(uses YAML value)* | Override: `blocking` or `monitoring` |
-| `RATE_LIMIT` | No | `60` | Max requests/minute per client IP (0 = disabled) |
+| `RATE_LIMIT` | No | `60` | Max requests/minute per API key (0 = disabled). Counted separately in each server worker. |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 | `POLICY_PATH` | No | `policies/generative_ai_aup.yaml` | Path to policy file |
 
@@ -187,7 +194,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 
 - **Regex-only detection.** The scanner will miss encoded, obfuscated, or context-dependent sensitive data. See `scanning/patterns.py` for per-pattern false-positive/false-negative documentation. NER model integration (e.g., Presidio) is planned.
 - **No TLS built in.** Deploy behind a reverse proxy (nginx, Traefik, Envoy) for TLS termination in production.
-- **Audit logs are tamper-evident, not immutable.** Hash chaining detects modification after the fact. For true immutability, ship logs to S3 with Object Lock or a SIEM.
+- **Audit logs are tamper-evident, not immutable.** Hash chaining detects modification after the fact, and a head record beside the log detects entries deleted from the end. Someone able to rewrite both files can still hide a deletion. For true immutability, ship logs to S3 with Object Lock or a SIEM.
+- **The `user_id` field in a request is not verified.** The audit log records the owner of the API key as `user_id` and stores the caller-supplied value separately as `client_user_id`.
+- **Rate limits are per worker.** With four workers, a key can make up to four times `RATE_LIMIT` requests per minute. Use a shared store or your gateway's rate limiting if you need an exact limit.
+- **Not yet a full drop-in for the OpenAI API.** Only `model`, `messages` and `temperature` are forwarded. Tools, streaming and list-style message content are not supported yet.
 - **Single upstream provider format.** Currently supports OpenAI-compatible APIs. Azure OpenAI and other providers require URL/auth format changes.
 
 ## Security
